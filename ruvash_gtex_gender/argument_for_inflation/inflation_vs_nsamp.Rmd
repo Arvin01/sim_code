@@ -1,0 +1,175 @@
+---
+title: "Inflation Parameter vs Sample Size"
+author: David Gerard
+output: rmarkdown::html_document
+date: "`r Sys.Date()`"
+bibliography: gtex_bib.bib
+---
+
+# Abstract
+It appears that the estimate of the variance inflation parameter depends on the sample size. When the labels are randomly permuted, we have that for small sample sizes the inflation is larger and for large sample sizes, the inflation is smaller. When I don't permute the labels but just take subsamples of the data, the relationship is weird. This doesn't seem to be a control-gene issue as I see similar results using SUCCOTASH.
+
+
+# Data cleaning
+Read in the cleaned muscle gtex data.
+```{r}
+library(ggplot2)
+library(reshape2)
+load(file = "../output/cleaned_gtex_data/muscle.Rd")
+Y <- muscle$Y
+ctl <- muscle$ctl
+onsex <- muscle$chrom == "X" | muscle$chrom == "Y"
+sevenfive <- apply(Y, 2, quantile, probs = 0.75) ## to deal with library size
+X <- cbind(muscle$X, sevenfive)
+```
+$Y$ is log(COUNTS + 1) of the top `r nrow(muscle$Y)` expressed genes (genes with at least 10 reads per sample on average). Samples from the same individual were averaged, resulting in $n =$ `r ncol(muscle$Y)`. $X$ contains just an intercept and an indicator for sex. The idea here is that genes on sex chromosomes are "positive controls," so the best method will be that which has the most genes on sex chromosomes among the most significant genes. This is the setup that @gagnon2012using and @wang2015confounder use to evaluate performance between these confounder adjustment methods.
+
+Control genes are the housekeeping genes identified by @eisenberg2013human. This is a different list than that used by @gagnon2012using, which was drawn from @eisenberg2003human. In total, there are `r sum(muscle$ctl)` housekeeping genes among the `r nrow(muscle$Y)` most expressed genes in the GTEX muscle data.
+
+# Analysis
+Take subsets of the samples and run RUVASH. Here, we let $n = 10, 20, 50, 100, 200$.
+```{r, eval = FALSE}
+set.seed(1)
+k <- sva::num.sv(dat = Y, mod = X)
+ruvash_out <- ashr::ash_ruv(Y = t(Y), X = X, ctl = ctl, k = k, cov_of_interest = 2)
+
+itermax <- 100
+nsamp_seq <- c(10, 20, 50, 100, 200)
+mult_mat <- matrix(NA, nrow = length(nsamp_seq) * itermax + 1, ncol = 4)
+colnames(mult_mat) <- c("seed", "num_sv", "nsamp", "multiplier")
+mult_mat[1, ] <- c(1, k, ncol(Y), ruvash_out$ruv$multiplier)
+
+rowindex <- 2
+for (nsamp in nsamp_seq) {
+    for (rep_index in 1:itermax) {
+        current_seed <- nsamp + rep_index
+        set.seed(current_seed)
+        subcols <- sample(1:ncol(Y), size = nsamp)
+        Ysub <- Y[, subcols]
+        Xsub <- X[subcols, ]
+        while (all(Xsub[, "Gender"] == 1) | all(Xsub[, "Gender"] == 0)) {
+            subcols <- sample(1:ncol(Y), size = nsamp)
+            Ysub <- Y[, subcols]
+            Xsub <- X[subcols, ]
+        }
+
+        k <- sva::num.sv(dat = Ysub, mod = Xsub)
+        ruvash_out <- ashr::ash_ruv(Y = t(Ysub), X = Xsub, ctl = ctl, k = k, cov_of_interest = 2)
+
+        mult_mat[rowindex, 1] <- current_seed
+        mult_mat[rowindex, 2] <- k
+        mult_mat[rowindex, 3] <- nsamp
+        mult_mat[rowindex, 4] <- ruvash_out$ruv$multiplier
+        cat("rowindex", rowindex, "\n")
+        cat("vals", mult_mat[rowindex, ], "\n")
+        rowindex <- rowindex + 1
+    }
+}
+write.csv(mult_mat, file = "mult_mat.csv", row.names = FALSE)
+```
+
+Same thing but using random labels for "treatment" and "control".
+```{r, eval = FALSE}
+itermax <- 100
+nsamp_seq <- c(10, 20, 50, 100, 200, 400)
+mult_mat <- matrix(NA, nrow = length(nsamp_seq) * itermax, ncol = 4)
+colnames(mult_mat) <- c("seed", "num_sv", "nsamp", "multiplier")
+mult_mat[1, ] <- c(1, k, ncol(Y), ruvash_out$ruv$multiplier)
+
+rowindex <- 1
+for (nsamp in nsamp_seq) {
+    for (rep_index in 1:itermax) {
+        current_seed <- nsamp + rep_index
+        set.seed(current_seed)
+        subcols <- sample(1:ncol(Y), size = nsamp)
+        Ysub <- Y[, subcols]
+        Xsub <- X[subcols, ]
+        Xsub[, "Gender"] <- sample(Xsub[, "Gender"])
+        while (all(Xsub[, "Gender"] == 1) | all(Xsub[, "Gender"] == 0)) {
+            subcols <- sample(1:ncol(Y), size = nsamp)
+            Ysub <- Y[, subcols]
+            Xsub <- X[subcols, ]
+            Xsub[, "Gender"] <- sample(Xsub[, "Gender"])
+        }
+        k <- sva::num.sv(dat = Ysub, mod = Xsub)
+        ruvash_out <- ashr::ash_ruv(Y = t(Ysub), X = Xsub, ctl = ctl, k = k, cov_of_interest = 2)
+
+        mult_mat[rowindex, 1] <- current_seed
+        mult_mat[rowindex, 2] <- k
+        mult_mat[rowindex, 3] <- nsamp
+        mult_mat[rowindex, 4] <- ruvash_out$ruv$multiplier
+        cat("rowindex", rowindex, "\n")
+        cat("vals", mult_mat[rowindex, ], "\n")
+        rowindex <- rowindex + 1
+    }
+}
+write.csv(mult_mat, file = "mult_mat_random_labels.csv", row.names = FALSE)
+```
+
+```{r, eval = FALSE}
+mult_df <- as.data.frame(mult_mat)
+mult_df$adhoc_mult <- mult_df$nsamp / (mult_df$nsamp - mult_df$num_sv - 3)
+mult_df$lambda <- mult_df$multiplier / mult_df$adhoc_mult
+write.csv(mult_df, file = "mult_mat_random_labels_with_lambda.csv", row.names = FALSE)
+```
+
+
+Boxplot of variance inflation parameter before and after ad-hoc multiplication. Red dashed line is as a multiplier of 1. As the sample size increases, the multiplier gets closer to 1. Without the ad-hoc multiplication, it seems to converge to a something a little less than 1. These plots are under the simulation scenario where the labels were randomly permuted.
+```{r}
+mdf <- read.csv("mult_mat_random_labels_with_lambda.csv")
+longdat <- melt(mdf, measure.vars = c("multiplier", "lambda"))
+
+ggplot(data = longdat, mapping = aes(x = as.factor(nsamp), y = value,
+                                     fill = as.factor(nsamp))) +
+    geom_boxplot() + geom_hline(yintercept = 1, col = 2, lty = 2) +
+    xlab("Sample Size") + ylab("Variance Inflation Parameter") +
+    facet_grid(.~variable) +
+    guides(fill = guide_legend(title="Sample Size"))
+```
+
+When I don't randomly permute the labels, but rather just choose a random subset of observations, I see very different behavior.
+```{r}
+mdf2 <- read.csv("mult_mat.csv")
+mdf2$adhoc_mult <- mdf2$nsamp / (mdf2$nsamp - mdf2$num_sv - 3)
+mdf2$lambda <- mdf2$multiplier / mdf2$adhoc_mult
+longdat <- melt(mdf2, measure.vars = c("multiplier", "lambda"))
+
+ggplot(data = longdat, mapping = aes(x = as.factor(nsamp), y = value,
+                                     fill = as.factor(nsamp))) +
+    geom_boxplot() + geom_hline(yintercept = 1, col = 2, lty = 2) +
+    xlab("Sample Size") + ylab("Variance Inflation Parameter") +
+    facet_grid(.~variable) +
+    guides(fill = guide_legend(title="Sample Size")) +
+    ylim(0, 20)
+```
+
+It might be the misclassification of control genes. In the permuted labels case, all of the genes are null. But when we are just taking subsets of observations, there are real effects. It might be that the control genes are mispecified. We can run SUCCOTASH on the GTEX data and compare its estimated variance inflation parameter.
+
+```{r, cache = TRUE}
+sevenfive <- apply(muscle$Y, 2, quantile, probs = 0.75) ## to deal with library size
+X <- cbind(sevenfive, muscle$X)
+succ_out <- succotashr::succotash(Y = t(muscle$Y), X = X, optmethod = "em")
+```
+
+But the estimate is actually really close to what we are getting with RUVASH.
+```{r}
+succ_out$scale_val
+```
+
+If we permute the labels of $X$, does succotash not have as large a variance inflation parameter?
+```{r, cache = TRUE}
+set.seed(6882)
+X[, "Gender"] <- sample(X[, "Gender"])
+succ_out2 <- succotashr::succotash(Y = t(muscle$Y), X = X, optmethod = "em")
+```
+
+No, it is very close to 1:
+```{r}
+succ_out2$scale_val
+```
+
+```{r}
+sessionInfo()
+```
+
+# References

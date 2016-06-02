@@ -1,0 +1,201 @@
+---
+title: "Initial GTEX Analysis"
+author: David Gerard
+output: html_document
+date: "`r Sys.Date()`"
+bibliography: gtex_bib.bib
+---
+
+# Abstract
+I briefly outline a motivational argument that we can provide in a paper on variance inflation in confounder adjustment methods.
+
+# Data cleaning
+Read in the cleaned muscle gtex data and estimate the number of hidden confounders with `sva::num.sv()`.
+```{r, cache = TRUE}
+library(ggplot2)
+load(file = "../output/cleaned_gtex_data/muscle.Rd")
+Y <- muscle$Y
+ctl <- muscle$ctl
+onsex <- muscle$chrom == "X" | muscle$chrom == "Y"
+sevenfive <- apply(Y, 2, quantile, probs = 0.75) ## to deal with library size
+X <- cbind(muscle$X, sevenfive)
+```
+
+$Y$ is log(COUNTS + 1) of the top `r nrow(muscle$Y)` expressed genes (genes with at least 10 reads per sample on average). Samples from the same individual were averaged, resulting in $n =$ `r ncol(muscle$Y)`. $X$ contains just an intercept and an indicator for sex. The idea here is that genes on sex chromosomes are "positive controls," so the best method will be that which has the most genes on sex chromosomes among the most significant genes. This is the setup that @gagnon2012using and @wang2015confounder use to evaluate performance between these confounder adjustment methods.
+
+Control genes are the housekeeping genes identified by @eisenberg2013human. This is a different list than that used by @gagnon2012using, which was drawn from @eisenberg2003human. In total, there are `r sum(muscle$ctl)` housekeeping genes among the `r nrow(muscle$Y)` most expressed genes in the GTEX muscle data.
+
+# Analysis
+
+```{r}
+lm_out <- limma::lmFit(object = Y, design = X)
+eb_out <- limma::eBayes(lm_out)
+
+
+qout <- qvalue::qvalue(p = eb_out$p.value[, "Gender"])
+
+p_temp <- eb_out$p.value[, "Gender"]
+p_temp[p_temp == 0] <- min(p_temp[p_temp != 0])
+p_temp[p_temp == 1] <- max(p_temp[p_temp != 1])
+locout <- locfdr::locfdr(stats::qnorm(p = p_temp))
+order_loc <- order(locout$fdr)
+loc_qvalue <- (cumsum(locout$fdr[order_loc]) / (1:length(locout$fdr)))[order(order_loc)]
+
+ashout <- ashr::ash(betahat = eb_out$coefficients[, "Gender"],
+                    sebetahat = eb_out$stdev.unscaled[, "Gender"] * eb_out$sigma)
+
+
+
+k <- sva::num.sv(dat = Y, mod = X)
+ruvash_out <- ashr::ash_ruv(Y = t(Y), X = X, ctl = ctl, k = k, cov_of_interest = 2)
+ruv4_out <- ruv::RUV4(Y = t(Y), X = X[, "Gender", drop = FALSE],
+                      ctl = ctl, k = k)
+
+p_temp <- c(ruv4_out$p)
+p_temp[p_temp == 0] <- min(p_temp[p_temp != 0])
+p_temp[p_temp == 1] <- max(p_temp[p_temp != 1])
+loc_ruv4 <- locfdr::locfdr(zz = qnorm(p_temp))
+order_loc4 <- order(loc_ruv4$fdr)
+loc4_qvalue <- (cumsum(loc_ruv4$fdr[order_loc4]) / (1:length(loc_ruv4$fdr)))[order(order_loc4)]
+qval_ruv4 <- qvalue::qvalue(p = ruv4_out$p)
+ash_ruv4 <- ashr::ash(betahat = ruv4_out$betahat,
+                      sebetahat = sqrt(ruv4_out$sigma2 * ruv4_out$multiplier))
+
+
+fdr_level <- 0.05
+sum(onsex)
+sum(loc_qvalue < fdr_level)
+sum(loc4_qvalue < fdr_level)
+
+sum(qout$qvalue < fdr_level)
+sum(qval_ruv4$qvalue < fdr_level)
+
+sum(ashout$qvalue < fdr_level)
+sum(ash_ruv4$qvalue < fdr_level)
+
+sum(ruvash_out$qvalue < fdr_level)
+
+orderash <- order(ashout$lfdr)
+orderash4 <- order(ash_ruv4$lfdr)
+
+orderloc <- order(locout$fdr)
+orderloc4 <- order(loc_ruv4$fdr)
+
+orderqval <- order(qout$lfdr)
+orderqval4 <- order(qval_ruv4$lfdr)
+
+orderruvash <- order(ruvash_out$lfdr)
+
+
+qout$pi0
+qval_ruv4$pi0
+ashout$fitted.g$pi[1]
+ash_ruv4$fitted.g$pi[1]
+ruvash_out$fitted.g$pi[1]
+
+numplot <- 200
+sum(onsex[orderash][1:numplot])
+sum(onsex[orderash4][1:numplot])
+
+sum(onsex[orderloc][1:numplot])
+sum(onsex[orderloc4][1:numplot])
+
+sum(onsex[orderqval][1:numplot])
+sum(onsex[orderqval4][1:numplot])
+
+sum(onsex[orderruvash][1:numplot])
+
+ruvash_out$ruv$multiplier
+
+qplot(x = 1:numplot, y = ruvash_out$qvalue[orderruvash][1:numplot],
+      color = onsex[orderruvash][1:numplot])
+```
+
+A large assumption in this analysis is that there are few real effects on the autosomes (the non-sex chromosomes). To guage the reasonableness of this assumption, we perform a permutation procedure to obtain a baseline level of significance. We randomly permute the sex labels and apply each of the methods above. We then calculate the number of genes each method declares significant below a FDR threshold of `r fdr_level`. We only look at the autosomal genes for this approach.
+
+```{r, cache = TRUE}
+rm(list = ls())
+library(ggplot2)
+load(file = "../output/cleaned_gtex_data/muscle.Rd")
+nsamp <- 40
+ctl <- muscle$ctl
+onsex <- muscle$chrom == "X" | muscle$chrom == "Y"
+
+Y <- muscle$Y[!onsex, 1:nsamp]
+sevenfive <- apply(Y, 2, quantile, probs = 0.75) ## to deal with library size
+X <- muscle$X[1:nsamp, ]
+ctl <- muscle$ctl[!onsex]
+k <- sva::num.sv(dat = Y, mod = X) ## same for all permutation of X[, "Gender"]
+
+itermax <- 100
+numsig_df <- matrix(NA, nrow = itermax, ncol = 10)
+fdr_level <- 0.05
+for (index in 1:itermax) {
+    current_seed <- index * 11 + 21
+    set.seed(current_seed)
+    X[, "Gender"] <- sample(muscle$X[1:nsamp, "Gender"])
+
+    lm_out <- limma::lmFit(object = Y, design = X)
+    eb_out <- limma::eBayes(lm_out)
+
+    qout <- qvalue::qvalue(p = eb_out$p.value[, "Gender"])
+
+    p_temp <- eb_out$p.value[, "Gender"]
+    p_temp[p_temp == 0] <- min(p_temp[p_temp != 0])
+    p_temp[p_temp == 1] <- max(p_temp[p_temp != 1])
+    locout <- locfdr::locfdr(stats::qnorm(p = p_temp))
+    order_loc <- order(locout$fdr)
+    loc_qvalue <- (cumsum(locout$fdr[order_loc]) / (1:length(locout$fdr)))[order(order_loc)]
+
+    ashout <- ashr::ash(betahat = eb_out$coefficients[, "Gender"],
+                        sebetahat = eb_out$stdev.unscaled[, "Gender"] * eb_out$sigma)
+
+
+    ruvash_out <- ashr::ash_ruv(Y = t(Y), X = X, ctl = ctl, k = k, cov_of_interest = 2)
+    ruv4_out <- ruv::RUV4(Y = t(Y), X = X[, "Gender", drop = FALSE],
+                          ctl = ctl, k = k)
+
+    p_temp <- c(ruv4_out$p)
+    p_temp[p_temp == 0] <- min(p_temp[p_temp != 0])
+    p_temp[p_temp == 1] <- max(p_temp[p_temp != 1])
+    loc_ruv4 <- locfdr::locfdr(zz = qnorm(p_temp))
+    order_loc4 <- order(loc_ruv4$fdr)
+    loc4_qvalue <- (cumsum(loc_ruv4$fdr[order_loc4]) / (1:length(loc_ruv4$fdr)))[order(order_loc4)]
+    qval_ruv4 <- qvalue::qvalue(p = ruv4_out$p)
+    ash_ruv4 <- ashr::ash(betahat = ruv4_out$betahat,
+                          sebetahat = sqrt(ruv4_out$sigma2 * ruv4_out$multiplier))
+
+
+    numsig_df[index, 1] <- current_seed
+    numsig_df[index, 2] <- k
+    numsig_df[index, 3] <- ruvash_out$ruv$multiplier
+
+    numsig_df[index, 4] <- sum(loc_qvalue < fdr_level)
+    numsig_df[index, 5] <- sum(loc4_qvalue < fdr_level)
+
+    numsig_df[index, 6] <- sum(qout$qvalue < fdr_level)
+    numsig_df[index, 7] <- sum(qval_ruv4$qvalue < fdr_level)
+
+    numsig_df[index, 8] <- sum(ashout$qvalue < fdr_level)
+    numsig_df[index, 9] <- sum(ash_ruv4$qvalue < fdr_level)
+
+    numsig_df[index, 10] <- sum(ruvash_out$qvalue < fdr_level)
+
+
+    cat("iteration:", index, "\n")
+    cat("Results:", numsig_df[index, ], "\n\n")
+}
+
+```
+
+```{r}
+boxplot(log(numsig_df[, -c(1,2)] + 1))
+
+
+```
+
+```{r}
+sessionInfo()
+```
+
+# References

@@ -1,0 +1,13 @@
+*.csv
+*.pdf
+*.png
+*~
+*.html
+*.Rd
+*.Rhistory
+*.RData
+*.rdb
+*.rdx
+*__packages
+\#*
+.#*
