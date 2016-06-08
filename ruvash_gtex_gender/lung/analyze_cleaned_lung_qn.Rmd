@@ -1,0 +1,112 @@
+---
+title: "Initial GTEX Analysis for Lung"
+author: David Gerard
+output: html_document
+date: "`r Sys.Date()`"
+bibliography: gtex_bib.bib
+---
+
+# Brief Summary
+Read in the cleaned lung gtex data and estimate the number of hidden confounders with `sva::num.sv()`.
+```{r, cache = TRUE}
+library(ggplot2)
+load(file = "../output/cleaned_gtex_data/lung.Rd")
+Ylung <- limma::normalizeQuantiles(lung$Y)
+k <- sva::num.sv(dat = Ylung, mod = lung$X)
+k
+```
+
+$Y$ is log(COUNTS + 1) of the top `r nrow(Ylung)` expressed genes (genes with at least 10 reads per sample on average). I then quantile-normalized the samples. Samples from the same individual were averaged, resulting in $n =$ `r ncol(Ylung)`. $X$ contains just an intercept and an indicator for gender. The idea here is that genes on sex chromosomes are "positive controls," so the best method will be that which has the most genes on sex chromosomes among the most significant genes. This is the setup that @gagnon2012using and @wang2015confounder use to evaluate performance between these confounder adjustment methods.
+
+Control genes are the housekeeping genes identified by @eisenberg2013human. This is a different list than that used by @gagnon2012using, which was drawn from @eisenberg2003human. In total, there are `r sum(lung$ctl)` housekeeping genes among the `r nrow(Ylung)` most expressed genes in the GTEX lung data.
+
+# Analysis
+
+## RUVASH vs RUV4
+
+Now fit RUVASH and RUV4. (I also limmashrink the variances here)
+```{r, cache = TRUE}
+qthresh <- 0.1
+onsex <- lung$chrom == "X" | lung$chrom == "Y"
+ruvash_out <- ashr::ash_ruv(Y = t(Ylung), X = lung$X, ctl = lung$ctl, k = k,
+                            limmashrink = TRUE)
+ruvash_onsex <- onsex[order(ruvash_out$lfdr)]
+ruv4_out <- ruv::RUV4(Y = t(Ylung), X = lung$X[, 2, drop = FALSE], ctl = lung$ctl, k = k)
+ruv4_onsex <- onsex[order(ruv4_out$p)]
+num_sig <- sum(ruvash_out$qvalue < qthresh)
+qout <- qvalue::qvalue(p = ruv4_out$p)
+num_sig_ruv4 <- sum(qout$qvalue < qthresh)
+```
+
+The orderings that RUVASH and RUV4 give for the most significant genes are very similar. RUVASH says that `r num_sig` genes have a q-value less than `r qthresh`. RUVASH says that `r sum(ruvash_onsex[1:num_sig])` of the top `r num_sig` genes are on a sex chromosome while RUV4 says that `r sum(ruv4_onsex[1:num_sig])` of the top `r num_sig` genes are on a sex chromosome. We can calculate the Kendall's tau of the rankings that RUV4 and RUVASH give for the top `r num_sig` genes:
+```{r}
+lfdr_order <- order(ruvash_out$lfdr)
+tau <- cor(c(ruv4_out$p)[lfdr_order[1:num_sig]], ruvash_out$lfdr[lfdr_order[1:num_sig]], method = "kendall")
+tau
+```
+
+Their rankings don't differ that much in the first `r num_sig` genes. The ordering later on gets a very different.
+```{r}
+qplot(rank(c(ruv4_out$p))[lfdr_order[1:num_sig]], rank(ruvash_out$lfdr)[lfdr_order[1:num_sig]],
+      xlab = "RUV4 Rank", ylab = "RUVASH Rank",
+      main = paste("Rankings for top", num_sig, "genes"),
+      color = onsex[lfdr_order[1:num_sig]]) +
+    guides(color=guide_legend(title="On Sex?"))
+
+qplot(rank(c(ruv4_out$p)), rank(ruvash_out$lfdr),
+      xlab = "RUV4 Rank", ylab = "RUVASH Rank",
+      main = "Rankings for all genes",
+      color = onsex[lfdr_order]) +
+    guides(color=guide_legend(title="On Sex?"))
+```
+<!-- With a Kendall's tau of `r cor(c(ruv4_out$p), ruvash_out$lfdr, method = "kendall")`. -->
+
+However, I am going to argue that RUVASH is much better calibrated than RUV4. RUV4, followed by using `qvalue` [@storey2003positive], estimates $\pi_0$ to be `r qout$pi0` against RUVASH's estimated $\pi_0$ of `r ruvash_out$fitted.g$pi[1]`. I think RUVASH's estimate is much more realistic in this scenario as `r 1 - mean(onsex)` of the genes are not on a sex chromosome, so one would think that $\pi_0$ is closer to this value. Furthermore, RUV4 + `qvalue` says that `r num_sig_ruv4` genes have a q-value less than `r qthresh`, compared to RUVASH's estimate of `r num_sig`. The proportion of the top `r num_sig` RUVASH genes on a sex chromosome is `r mean(ruvash_onsex[1:num_sig])`. The proportion of the top `r num_sig_ruv4` RUV4 genes on a sex chromosome is `r mean(ruv4_onsex[1:num_sig_ruv4])`, which seems like very poor performance.
+
+The shift from sex chromosome genes to non-sex chromosome genes is not as clear as in the heart data set.
+```{r}
+num_plot <- 200
+df_lfdr <- data.frame(lfdr = ruvash_out$lfdr[lfdr_order][1:num_plot],
+                      qvalue = ruvash_out$qvalue[lfdr_order][1:num_plot],
+                      onsex = ruvash_onsex[1:num_plot],
+                      index = 1:num_plot)
+ggplot(data = df_lfdr, mapping = aes(y = lfdr, x = index, color = onsex)) + geom_point() +
+    geom_vline(xintercept = num_sig) +
+    ggtitle(paste("lfdrs for top", num_plot, "genes"))
+
+ggplot(data = df_lfdr, mapping = aes(x = qvalue, fill = onsex)) + geom_histogram(bins = 25) +
+    geom_vline(xintercept = qthresh) +
+    ggtitle(paste("Histogram of qvalues for top", num_plot, "genes"))
+```
+
+RUV4 is not having a problem with the p-value distribution. Indeed, it looks pretty good:
+```{r}
+ggplot(data = data.frame(pvalue = c(ruv4_out$p)), aes(x = pvalue, color = I("black"))) +
+    geom_histogram(, bins = 20)
+```
+
+The t-statistics for the genes that RUVASH says is null match up pretty well against a standard normal.
+```{r}
+sig_genes <- ruvash_out$qvalue < 0.05
+tstat <- ruvash_out$ruv$betahat / ruvash_out$ruv$sebetahat
+qqnorm(tstat[!sig_genes])
+qqline(tstat[!sig_genes])
+```
+
+## ASH using RUV4 without the variance inflation.
+The variance inflation for RUVASH is very high, being `r ruvash_out$ruv$multiplier`. We can fit ASH using the output from RUV4 and see what comes out.
+
+```{r, cache = TRUE}
+betahat   <- ruv4_out$betahat
+sebetahat <- sqrt(ruv4_out$sigma * ruv4_out$multiplier)
+ash_out <- ashr::ash(betahat = betahat, sebetahat = sebetahat)
+ash_out$fitted.g$pi[1] ## estimate of pi0
+```
+which is even lower than that provided by `qvalue`.
+
+
+```{r}
+sessionInfo()
+```
+
+# References
