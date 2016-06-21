@@ -1,0 +1,194 @@
+---
+title: "Non-null example from heart GTEX data"
+author: David Gerard
+output: rmarkdown::html_document
+date: "`r Sys.Date()`"
+---
+
+# Abstract
+
+# Analysis
+
+Source poisson-thinning datamaker.
+```{r}
+source("../succotash_sims/code/datamaker_only_counts.R")
+```
+
+Set data generation conditions
+```{r}
+## these do not change
+args_val              <- list()
+args_val$log2foldsd   <- 1
+args_val$tissue       <- "muscle"
+args_val$path         <- "../../data/gtex_tissue_gene_reads/"
+args_val$Ngene        <- 1000
+args_val$log2foldmean <- 0
+args_val$skip_gene    <- 0
+args_val$Nsamp <- 10 ## size of group, sample size is 2 times this
+args_val$nullpi <- 0.8
+args_val$poisthin <- TRUE
+ncontrols <- 100
+```
+
+Generate data with `r args_val$Nsamp * 2` samples, `r args_val$Ngene` genes, and `r ncontrols` control genes. The signal is normal with mean 0 and standard deviation `r args_val$log2foldsd`. The proportion of null genes is `r args_val$nullpi`.
+
+```{r, cache = TRUE, echo = FALSE, eval = FALSE}
+itermax <- 100
+qmat <- matrix(NA, nrow = itermax, ncol = 5)
+colnames(qmat) <- c("ruv4", "ruv4inflate", "catenc_cal", "catenc_nocal", "seed")
+for (index in 1:itermax) {
+    set.seed(index + 10)
+    dout <- datamaker_counts_only(args = args_val)
+    which_null <- as.logical(dout$meta$null)
+
+    ctl <- rep(FALSE, length = args_val$Ngene)
+    ctl[sample((1:args_val$Ngene)[which_null], size = ncontrols)] <- TRUE
+
+    beta_true <- rep(0, length = args_val$Ngene)
+    beta_true[!which_null] <- dout$meta$true_log2foldchange
+    X <- as.matrix(model.matrix(~dout$input$condition))
+    colnames(X) <- c("Intercept", "Treatment")
+    Y <- t(log2(as.matrix(dout$input$counts + 1)))
+    num_sv <- sva::num.sv(t(Y), mod = X, method = "be")
+    num_sv
+
+    ruv4out    <- ruv::RUV4(Y = t(sublheart), X = X[, 2, drop = FALSE],
+                            ctl = ctl, Z = X[, 1, drop = FALSE], k = num_sv)
+    qmat[index, 1] <- qvalue::qvalue(ruv4out$p)$pi0
+
+    ruv4inflate <- ashr::ash_ruv(Y = t(sublheart), X = X, ctl = ctl, k = num_sv,
+                                 likelihood = "t")
+    qmat[index, 2] <- qvalue::qvalue(ruv4inflate$ruv$pvalues)$pi0
+
+    catenc <- cate::cate(~condition, X.data = as.data.frame(X), Y = t(sublheart), r = num_sv,
+                     nc = ctl, adj.method = "nc", calibrate = TRUE)
+    qmat[index, 3] <- qvalue::qvalue(catenc$beta.p.value)$pi0
+
+    catenc_f <- cate::cate(~condition, X.data = as.data.frame(X), Y = t(sublheart), r = num_sv,
+                     nc = ctl, adj.method = "nc", calibrate = FALSE)
+    qmat[index, 4] <- qvalue::qvalue(catenc_f$beta.p.value)$pi0
+
+    qmat[index, 5] <- index ## the current seed
+    cat(qmat[index, ], "\n")
+}
+```
+
+```{r, echo = FALSE, eval = FALSE}
+library(reshape2)
+library(ggplot2)
+
+longdat <- melt(data = as.data.frame(qmat), id.vars = "seed")
+colnames(longdat) <- c("seed", "method", "pi0hat")
+ggplot(data = longdat, mapping = aes(y = pi0hat, x = method, fill = method)) +
+    geom_boxplot() +
+    ggtitle("qvalue estimates of pi0")
+```
+
+
+
+```{r}
+set.seed(52)
+dout <- datamaker_counts_only(args = args_val)
+which_null <- as.logical(dout$meta$null)
+
+ctl <- rep(FALSE, length = args_val$Ngene)
+ctl[sample((1:args_val$Ngene)[which_null], size = ncontrols)] <- TRUE
+
+beta_true <- rep(0, length = args_val$Ngene)
+beta_true[!which_null] <- dout$meta$true_log2foldchange
+X <- as.matrix(model.matrix(~dout$input$condition))
+colnames(X) <- c("Intercept", "Treatment")
+Y <- t(log2(as.matrix(dout$input$counts + 1)))
+num_sv <- sva::num.sv(t(Y), mod = X, method = "be")
+num_sv
+```
+
+# Fit methods
+
+```{r, warning = FALSE}
+ruvashout  <- ash_ruv(Y = Y, X = X, ctl = ctl, k = num_sv,
+                      likelihood = "t")
+ruvashnorm <- ash_ruv(Y = Y, X = X, ctl = ctl, k = num_sv,
+                      likelihood = "normal")
+ruv4out    <- ruv::RUV4(Y = Y, X = X[, 2, drop = FALSE],
+                        ctl = ctl, Z = X[, 1, drop = FALSE], k = num_sv)
+svaout     <- sva::sva(dat = t(as.matrix(Y)), mod = X, n.sv = 6)
+Xsv <- cbind(X, svaout$sv)
+svout <- limma::eBayes(limma::lmFit(object = t(Y), design = Xsv))
+caterr <- cate::cate(~Treatment, X.data = as.data.frame(X), Y = Y, r = num_sv)
+catenc <- cate::cate(~Treatment, X.data = as.data.frame(X), Y = Y, r = num_sv,
+                     nc = ctl, adj.method = "nc")
+caterr_nocal <- cate::cate(~Treatment, X.data = as.data.frame(X), Y = Y, r = num_sv,
+                     calibrate = FALSE)
+catenc_nocal <- cate::cate(~Treatment, X.data = as.data.frame(X), Y = Y, r = num_sv,
+                     nc = ctl, adj.method = "nc", calibrate = FALSE)
+```
+
+# Plot the null genes
+
+```{r}
+library(ggplot2)
+plot_qq <- function(p, title = "qq-unif") {
+    df <- data.frame(sample = sort(p), theoretical = seq(0, 1, length = length(p)))
+    pl <- ggplot(df, aes(x = theoretical, y = sample)) +
+        geom_point() +
+        geom_smooth(method = lm, lty = 2, alpha = 0.5) +
+        ggtitle(title) +
+        geom_abline(slope = 1, intercept = 0, alpha = 0.3)
+    print(pl)
+}
+plot_qq(p = ruvashout$ruv$pvalues[which_null], title = "RUV4 t Inflate")
+qvalue::qvalue(ruvashout$ruv$pvalues)$pi0
+ruvashout$fitted.g$pi[1]
+```
+
+The other versions of RUVASH overinflate. In the figures below, the blue dashed line is the linear regression line between the theoretical and sample quantiles. The gray line is the y = x line.
+```{r}
+plot_qq(p = ruvashout$ruv$pvalues_post[which_null], title = "RUV4 t Inflate Posthoc")
+plot_qq(p = ruvashnorm$ruv$pvalues[which_null], title = "RUV4 Normal Inflate")
+plot_qq(p = ruvashnorm$ruv$pvalues_post[which_null], title = "RUV4 Normal Inflate Posthoc")
+```
+
+
+But they look a *lot* better than the p-values from RUV4 and SVA, which have p-values that are way to small.
+```{r}
+plot_qq(p = ruv4out$p[which_null], title = "RUV4")
+plot_qq(p = svout$p.value[which_null, 2], title = "SVA OLS")
+```
+
+The calibrated CATE p-values look over inflated.
+```{r}
+plot_qq(caterr$beta.p.value[which_null], title = "CATE RR")
+plot_qq(catenc$beta.p.value[which_null], title = "CATE NC")
+```
+
+The uncalibrated CATE p-values look really bad
+```{r}
+plot_qq(caterr_nocal$beta.p.value[which_null], title = "CATE RR No Cal")
+plot_qq(catenc_nocal$beta.p.value[which_null], title = "CATE NC No Cal")
+```
+
+
+
+```{r, echo = FALSE, eval = FALSE}
+plot(ruvashout$ruv$tstats, catenc$beta.t)
+
+tk <- ruvashout$ruv$betahat_ols / ruvashout$ruv$sebetahat_ols
+tka <- (tk - median(tk)) / mad(tk )
+
+plot(ruv4out$t, ruvashout$ruv$tstats)
+plot(ruv4out$t, catenc$beta.t)
+
+
+ta <- (ruvashout$ruv$tstats - median(ruvashout$ruv$tstats)) / mad(ruvashout$ruv$tstats)
+pa <- 2 * pt(- abs(ta), df = args_val$Ngene - 2 - num_sv)
+hist(pa)
+
+hist(catenc$beta.p)
+
+```
+
+
+```{r}
+sessionInfo()
+```

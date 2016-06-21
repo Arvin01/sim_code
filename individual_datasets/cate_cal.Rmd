@@ -1,0 +1,157 @@
+---
+title: "Use ASH with MAD adjusted se"
+author: David Gerard
+output: rmarkdown::html_document
+date: "`r Sys.Date()`"
+---
+
+# Abstract
+CATE uses a sort of variance inflation when it "calibrates" its t-statistics. They center by the median of the t-statistics and scale by the median absolute deviation (MAD). This has the effect of making them conservative. What if we scale the variances by this MAD before applying ASH? Does it improve calibration? The answer is always yes.
+
+# Analysis
+
+Source poisson-thinning datamaker.
+```{r}
+source("../succotash_sims/code/datamaker_only_counts.R")
+```
+
+Set data generation conditions
+```{r}
+## these do not change
+args_val              <- list()
+args_val$log2foldsd   <- 1
+args_val$tissue       <- "muscle"
+args_val$path         <- "../../data/gtex_tissue_gene_reads/"
+args_val$Ngene        <- 1000
+args_val$log2foldmean <- 0
+args_val$skip_gene    <- 0
+args_val$Nsamp <- 10 ## size of group, sample size is 2 times this
+args_val$nullpi <- 0.8
+args_val$poisthin <- TRUE
+ncontrols <- 100
+```
+
+Generate data with `r args_val$Nsamp * 2` samples, `r args_val$Ngene` genes, and `r ncontrols` control genes. The signal is normal with mean 0 and standard deviation `r args_val$log2foldsd`. The proportion of null genes is `r args_val$nullpi`.
+
+
+```{r}
+set.seed(14)
+dout <- datamaker_counts_only(args = args_val)
+which_null <- as.logical(dout$meta$null)
+
+ctl <- rep(FALSE, length = args_val$Ngene)
+ctl[sample((1:args_val$Ngene)[which_null], size = ncontrols)] <- TRUE
+
+beta_true <- rep(0, length = args_val$Ngene)
+beta_true[!which_null] <- dout$meta$true_log2foldchange
+X <- as.matrix(model.matrix(~dout$input$condition))
+colnames(X) <- c("Intercept", "Treatment")
+Y <- t(log2(as.matrix(dout$input$counts + 1)))
+num_sv <- sva::num.sv(t(Y), mod = X, method = "be")
+num_sv
+```
+
+Fit various methods:
+
+```{r, warning = FALSE}
+ruv4out    <- ruv::RUV4(Y = Y, X = X[, 2, drop = FALSE],
+                        ctl = ctl, Z = X[, 1, drop = FALSE], k = num_sv)
+svaout     <- sva::sva(dat = t(as.matrix(Y)), mod = X, n.sv = 6)
+Xsv <- cbind(X, svaout$sv)
+svout <- limma::eBayes(limma::lmFit(object = t(Y), design = Xsv))
+caterr <- cate::cate(~Treatment, X.data = as.data.frame(X), Y = Y, r = num_sv)
+catenc <- cate::cate(~Treatment, X.data = as.data.frame(X), Y = Y, r = num_sv,
+                     nc = ctl, adj.method = "nc")
+catenc_nocal <- cate::cate(~Treatment, X.data = as.data.frame(X), Y = Y, r = num_sv,
+                     nc = ctl, adj.method = "nc", calibrate = FALSE)
+```
+
+Get cate se's
+```{r}
+sebetahat_caterr <- sqrt(caterr$beta.cov.row) * sqrt(diag(caterr$beta.cov.col)) /
+    sqrt(args_val$Nsamp * 2)
+sebetahat_catenc <- sqrt(catenc$beta.cov.row) * sqrt(diag(catenc$beta.cov.col)) /
+    sqrt(args_val$Nsamp * 2)
+
+## implementation check
+plot(catenc_nocal$beta, catenc$beta)
+abline(0, 1)
+plot(catenc_nocal$beta / sebetahat_catenc, catenc_nocal$beta.t)
+abline(0, 1)
+```
+
+# MAD adjustments and ASH
+If the MAD inflation improves ASH, it should take alter the $\pi_0$ estimates to be closer to `r args_val$nullpi`.
+
+## MAD adjustment for RUV4 improves ASH.
+```{r, warning = FALSE}
+betahat_ruv4   <- ruv4out$beta
+sebetahat_ruv4 <- sqrt(ruv4out$sigma2 * ruv4out$multiplier)
+mad_mult <- mad(betahat_ruv4 / sebetahat_ruv4)
+mad_mult
+sebetahat_ruv4_mad <- sebetahat_ruv4 * mad_mult
+
+ash_ruv4     <- ashr::ash(betahat = betahat_ruv4, sebetahat = sebetahat_ruv4)
+ash_ruv4_mad <- ashr::ash(betahat = betahat_ruv4, sebetahat = sebetahat_ruv4_mad)
+ruvash       <- ashr::ash_ruv(Y = Y, X = X, ctl = ctl, k = num_sv)
+
+ash_ruv4$fitted.g$pi[1]
+ash_ruv4_mad$fitted.g$pi[1]
+ruvash$fitted.g$pi[1]
+```
+
+## MAD adjustment for SVA improves ASH.
+```{r}
+betahat_sva   <- svout$coefficients[, 2]
+sebetahat_sva <- svout$sigma * svout$stdev.unscaled[, 2]
+mad_mult <- mad(betahat_sva / sebetahat_sva)
+mad_mult
+sebetahat_sva_mad <- sebetahat_sva * mad_mult
+
+ash_sva     <- ashr::ash(betahat = betahat_sva, sebetahat = sebetahat_sva)
+ash_sva_mad <- ashr::ash(betahat = betahat_sva, sebetahat = sebetahat_sva_mad)
+
+ash_sva$fitted.g$pi[1]
+ash_sva_mad$fitted.g$pi[1]
+ruvash$fitted.g$pi[1]
+```
+
+
+## MAD adjustment for CATEnc improves ASH
+```{r}
+betahat_catenc   <- catenc$beta
+sebetahat_catenc <- sebetahat_catenc
+mad_mult <- mad(betahat_catenc / sebetahat_catenc)
+mad_mult
+sebetahat_catenc_mad <- sebetahat_catenc * mad_mult
+
+ash_catenc     <- ashr::ash(betahat = betahat_catenc, sebetahat = sebetahat_catenc)
+ash_catenc_mad <- ashr::ash(betahat = betahat_catenc, sebetahat = sebetahat_catenc_mad)
+
+ash_catenc$fitted.g$pi[1]
+ash_catenc_mad$fitted.g$pi[1]
+ruvash$fitted.g$pi[1]
+```
+
+## MAD adjustment for CATErr improves ASH.
+```{r}
+betahat_caterr   <- caterr$beta
+sebetahat_caterr <- sebetahat_caterr
+mad_mult <- mad(betahat_caterr / sebetahat_caterr)
+mad_mult
+sebetahat_caterr_mad <- sebetahat_caterr * mad_mult
+
+ash_caterr     <- ashr::ash(betahat = betahat_caterr, sebetahat = sebetahat_caterr)
+ash_caterr_mad <- ashr::ash(betahat = betahat_caterr, sebetahat = sebetahat_caterr_mad)
+
+ash_caterr$fitted.g$pi[1]
+ash_caterr_mad$fitted.g$pi[1]
+ruvash$fitted.g$pi[1]
+```
+
+
+
+
+```{r}
+sessionInfo()
+```

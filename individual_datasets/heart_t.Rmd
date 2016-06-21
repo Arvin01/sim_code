@@ -1,0 +1,173 @@
+---
+title: "All-null example from heart GTEX data"
+author: David Gerard
+output: rmarkdown::html_document
+date: "`r Sys.Date()`"
+---
+
+# Abstract
+I look at an all null dataset generated from the GTEX heart data. I
+look at variance inflation here.
+
+# Data Generation
+Read in heart GTEX, take a log, select top 1000 genes.
+```{r}
+datapath <- "../../data/gtex_tissue_gene_reads/heart.csv"
+heart <- read.csv(datapath)
+ngene <- 1000
+lheart <- log(heart[, -c(1, 2)] + 1)
+rm(heart)
+exp_vec <- rowMeans(lheart)
+gene_lab <- order(exp_vec, decreasing = TRUE)[1:ngene]
+subgheart <- lheart[gene_lab, ]
+nsamp <- 20
+ncontrol <- 500
+```
+
+I'm going to run a small simulation study where I generate null data and use `qvalue` at every iteration on the p-values from RUV4, RUV4+inflation, CATE with negative controls and "calibration", and CATE with negative controls without "calibration". These are all very-similar methods. I use $n = $ `r nsamp` and $p = $ `r ngene`. I will be using `r ncontrol` control genes.
+
+CATE calibrates their t-statistics by dividing by the median absolute deviation of the t-statistics. This can be seen as a type of variance inflation.
+```{r, cache = TRUE}
+itermax <- 100
+qmat <- matrix(NA, nrow = itermax, ncol = 5)
+colnames(qmat) <- c("ruv4", "ruv4inflate", "catenc_cal", "catenc_nocal", "seed")
+for (index in 1:itermax) {
+    set.seed(index)
+    ind_pos <- sort(sample(1:ncol(subgheart), size = nsamp))
+    sublheart <- subgheart[, ind_pos]
+    dim(sublheart)
+
+    condition <- rep(0, length = nsamp)
+    condition[sample(1:length(condition), size = round(nsamp / 2))] <- 1
+    X <- model.matrix(~condition)
+
+
+
+    ctl <- rep(FALSE, length = ngene)
+    ctl[sample(1:ngene, size = ncontrol)] <- TRUE
+
+    num_sv <- sva::num.sv(dat = sublheart, mod = X)
+    num_sv
+
+    ruv4out    <- ruv::RUV4(Y = t(sublheart), X = X[, 2, drop = FALSE],
+                            ctl = ctl, Z = X[, 1, drop = FALSE], k = num_sv)
+    qmat[index, 1] <- qvalue::qvalue(ruv4out$p)$pi0
+
+    ruv4inflate <- vicar::vicarius_ruv4(Y = t(sublheart), X = X, ctl = ctl, k = num_sv)
+    qmat[index, 2] <- qvalue::qvalue(ruv4inflate$pvalue)$pi0
+
+    catenc <- cate::cate(~condition, X.data = as.data.frame(X), Y = t(sublheart), r = num_sv,
+                     nc = ctl, adj.method = "nc", calibrate = TRUE)
+    qmat[index, 3] <- qvalue::qvalue(catenc$beta.p.value)$pi0
+
+    catenc_f <- cate::cate(~condition, X.data = as.data.frame(X), Y = t(sublheart), r = num_sv,
+                     nc = ctl, adj.method = "nc", calibrate = FALSE)
+    qmat[index, 4] <- qvalue::qvalue(catenc_f$beta.p.value)$pi0
+
+    qmat[index, 5] <- index ## the current seed
+}
+```
+
+Now plot the estimates of $\pi_0$.
+```{r}
+library(reshape2)
+library(ggplot2)
+
+longdat <- melt(data = as.data.frame(qmat), id.vars = "seed")
+colnames(longdat) <- c("seed", "method", "pi0hat")
+ggplot(data = longdat, mapping = aes(y = pi0hat, x = method, fill = method)) +
+    geom_boxplot() +
+    ggtitle("qvalue estimates of pi0")
+```
+
+CATE with the calibration seems to do very well, but as I noted [earlier](http://dcgerard.github.io/succotash_sims/analysis/varyNsampNullpiLog2sd_cateonly.pdf), it usually over-inflates the t-statistics.
+
+
+# Run Many Methods
+Let's look at where RUV4 does the worst
+```{r}
+current_seed <- which.min(qmat[, 1])
+set.seed(current_seed)
+ind_pos <- sort(sample(1:ncol(subgheart), size = nsamp))
+sublheart <- subgheart[, ind_pos]
+dim(sublheart)
+
+condition <- rep(0, length = nsamp)
+condition[sample(1:length(condition), size = round(nsamp / 2))] <- 1
+X <- model.matrix(~condition)
+
+
+ncontrol <- 500
+ctl <- rep(FALSE, length = ngene)
+ctl[sample(1:ngene, size = ncontrol)] <- TRUE
+```
+
+
+```{r}
+library(ashr)
+library(sva)
+
+num_sv <- sva::num.sv(dat = sublheart, mod = X)
+num_sv
+
+ruvashout  <- ash_ruv(Y = t(sublheart), X = X, ctl = ctl, k = num_sv,
+                      likelihood = "t")
+ruvashnorm <- ash_ruv(Y = t(sublheart), X = X, ctl = ctl, k = num_sv,
+                      likelihood = "normal")
+ruv4out    <- ruv::RUV4(Y = t(sublheart), X = X[, 2, drop = FALSE],
+                        ctl = ctl, Z = X[, 1, drop = FALSE], k = num_sv)
+svaout     <- sva::sva(dat = as.matrix(sublheart), mod = X, n.sv = 6)
+Xsv <- cbind(X, svaout$sv)
+svout <- limma::eBayes(limma::lmFit(object = sublheart, design = Xsv))
+caterr <- cate::cate(~condition, X.data = as.data.frame(X), Y = t(sublheart), r = num_sv)
+catenc <- cate::cate(~condition, X.data = as.data.frame(X), Y = t(sublheart), r = num_sv,
+                     nc = ctl, adj.method = "nc")
+caterr_nocal <- cate::cate(~condition, X.data = as.data.frame(X), Y = t(sublheart), r = num_sv,
+                     calibrate = FALSE)
+catenc_nocal <- cate::cate(~condition, X.data = as.data.frame(X), Y = t(sublheart), r = num_sv,
+                     nc = ctl, adj.method = "nc", calibrate = FALSE)
+```
+
+RUVASH using a t-likelihood seems to have perfect t-statistics.
+```{r}
+library(ggplot2)
+plot_qq <- function(p, title = "qq-unif") {
+    df <- data.frame(sample = sort(p), theoretical = seq(0, 1, length = ngene))
+    pl <- ggplot(df, aes(x = theoretical, y = sample)) +
+        geom_point() +
+        geom_smooth(method = lm, lty = 2, alpha = 0.5) +
+        ggtitle(title) +
+        geom_abline(slope = 1, intercept = 0, alpha = 0.3)
+    print(pl)
+}
+plot_qq(p = ruvashout$ruv$pvalues, title = "RUV4 t Inflate")
+```
+
+The other versions of RUVASH overinflate. In the figures below, the blue dashed line is the linear regression line between the theoretical and sample quantiles. The gray line is the y = x line.
+```{r}
+plot_qq(p = ruvashout$ruv$pvalues_post, title = "RUV4 t Inflate Posthoc")
+plot_qq(p = ruvashnorm$ruv$pvalues, title = "RUV4 Normal Inflate")
+plot_qq(p = ruvashnorm$ruv$pvalues_post, title = "RUV4 Normal Inflate Posthoc")
+```
+
+But they look a *lot* better than the p-values from RUV4 and SVA, which have p-values that are way to small.
+```{r}
+plot_qq(p = ruv4out$p, title = "RUV4")
+plot_qq(p = svout$p.value[, 2], title = "SVA OLS")
+```
+
+The calibrated CATE p-values also look perfect.
+```{r}
+plot_qq(caterr$beta.p.value, title = "CATE RR")
+plot_qq(catenc$beta.p.value, title = "CATE NC")
+```
+
+The uncalibrated CATE p-values look really bad
+```{r}
+plot_qq(caterr_nocal$beta.p.value, title = "CATE RR No Cal")
+plot_qq(catenc_nocal$beta.p.value, title = "CATE NC No Cal")
+```
+
+```{r}
+sessionInfo()
+```
