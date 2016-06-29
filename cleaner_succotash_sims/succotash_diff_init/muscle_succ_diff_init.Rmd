@@ -1,0 +1,178 @@
+---
+title: "Starting Values for SUCCOTASH"
+author: "David Gerard"
+date: "`r Sys.Date()`"
+output: rmarkdown::pdf_document
+fig_caption: yes
+---
+
+
+
+# Abstract
+I run SUCCOTASH from different intial values of $Z$ and $\lambda$. Likelihood ratios are always below 1 + $\epsilon$. Estimates of $\lambda$ and $\pi_0$ are very similar between the two starting position strategies.
+
+# Simulation Setup
+I ran through 100 repetitions of generating data from GTEX muscle data under the following parameter conditions:
+
+* $n \in \{10, 20, 40\}$,
+* $p = 1000$.
+* $\pi_0 \in \{0.5, 0.9, 1\}$,
+* The alternative distribution being just a standard normal. New alternatives are generated every iteration.
+
+I extracted the most expressed $p$ genes from the GTEX muscle data and $n$ samples are chosen at
+random. Half of these samples are randomly given the "treatment"
+label 1, the other half given the "control" label 0. Of the $p$
+genes, $\pi_0p$ were chosen to be non-null. Signal was added by a
+Poisson-thinning approach, where the log-2 fold change was sampled from one of five the alternative models above.
+That is
+\begin{align}
+  A_1,\ldots,A_{p/2} &\sim f\\
+  B_i &= 2^{A_i} \text{ for } i = 1,\ldots, p/2,
+\end{align}
+where $f$ is from the table above. If $A_i > 0$ then we replace $Y_{[1:(n/2), i]}$ with $Binom(Y_{[j,i]}, 1 / B_i)$ for $j = 1,\ldots, n/2$. If $A_i < 0$ then we replace $Y_{[(n/2 + 1):n, i]}$ with $Binom(Y_{[j,i]}, B_i)$ for $j = n/2 + 1,\ldots, n$.
+
+I now describe the justification for this. Suppose that
+\begin{align}
+Y_{ij} \sim Poisson(\lambda_j).
+\end{align}
+Let $x_{i}$ be the indicator of treatment vs control for individual $i$. Let $\Omega$ be the set of non-null genes. Let $Z$ be the new dataset derived via the steps above. That is
+\begin{align}
+Z_{ij} | Y_{ij}=
+\begin{cases}
+Binom(Y_{ij}, 2 ^ {A_{j}x_i}) & \text{if } A_{j} < 0 \text{ and } j \in \Omega\\
+Binom(Y_{ij}, 2 ^ {-A_{j}(1 - x_i)}) & \text{if } A_{j} > 0 \text{ and } j \in \Omega\\
+Y_{ij} & \text{if } j \not\in \Omega.
+\end{cases}
+\end{align}
+Then
+\begin{align}
+Z_{ij} | A_{j}, A_{j} < 0, j \in \Omega &\sim Poisson(2^{A_{j}x_i}\lambda_j)\\
+Z_{ij} | A_{j}, A_{j} > 0, j \in \Omega &\sim Poisson(2^{-A_{j}(1 - x_i)}\lambda_j),
+\end{align}
+and
+\begin{align}
+E[\log_2(Z_{ij}) - \log_2(Z_{kj}) | A_{j}, A_{j} < 0, j \in \Omega] &\approx A_{j}x_i - A_{j}x_k, \text{ and}\\
+E[\log_2(Z_{ij}) - \log_2(Z_{kj}) | A_{j}, A_{j} > 0, j \in \Omega] &\approx -A_{j}(1 - x_i) + A_{j}(1 - x_k).
+\end{align}
+if individual $i$ is in the treatment group and individual $k$ is in the control group, then this just equals $A_j$. I treat the $A_j$'s as the true coefficient values when calculating the MSE below.
+
+# Methods
+I ran two versions of SUCCOTASH that differ only in their initial values for $Z$ (the confounders) and $\lambda$ (the variance inflation parameter). The two versions are:
+
+* $Z$ and $\lambda$ start at their MLE's assuming that the unimodal distribution is a pointmass at 0.
+* Each element of $Z$ is a standard normal draw and $\lambda$ is a $\chi^2_1$ draw.
+
+Both versions use a normal likelihood and a mixture of normals.
+
+I kept their estimates of $\pi_0$, their AUC's, their MSE's, their estimates of the variance inflation parameter, their maximized log-likelihood, and their maximixed null log-likelihood (maximized over $Z$ and $\lambda$ but not over the space of unimodal densities).
+
+# Results
+Read in simulation results.
+```{r}
+library(ggplot2)
+library(reshape2)
+library(dplyr)
+
+pi0_mat <- read.csv(file = "pi0_ruvash_alpha1.csv")
+mse_mat <- read.csv(file = "mse_ruvash_alpha1.csv")
+auc_mat <- read.csv(file = "auc_ruvash_alpha1.csv")
+scale_val_mat <- read.csv(file = "scale_val_ruvash_alpha1.csv")
+llike_mat <- read.csv(file = "llike_ruvash_alpha1.csv")
+null_llike_mat <- read.csv(file = "null_llike_ruvash_alpha1.csv")
+
+```
+## Estimates of $\pi_0$ and $\lambda$ are about the same
+Estimates of $\pi_0$ are pretty good and are usually about the same for both methods.
+```{r}
+ggplot(data = pi0_mat, mapping = aes(x = succ_null_mle, y = succ_random)) +
+    geom_point() +
+    facet_grid(nullpi ~ Nsamp) +
+    geom_abline(intercept = 0, slope = 1, col = 2, lty = 2, alpha = 1/2) +
+    ggtitle("Estimates of pi0")
+
+longdat <- melt(data = pi0_mat, measure.vars = c("succ_null_mle", "succ_random"),
+                id.vars = c("Nsamp", "nullpi"))
+longdat$Nsamp <- longdat$Nsamp * 2
+ggplot(data = longdat, mapping = aes(x = variable, y = value, fill = variable)) +
+    geom_boxplot() +
+    facet_grid(nullpi ~ Nsamp) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.3)) +
+    xlab("Method") + ylab(expression(hat(pi)[0])) +
+    ggtitle("Estimates of pi0")
+```
+
+Estimates of the scaling parameter are almost always exactly the same
+```{r}
+ggplot(data = scale_val_mat, mapping = aes(x = succ_null_mle, y = succ_random)) +
+    geom_point() +
+    facet_grid(nullpi ~ Nsamp) +
+    geom_abline(intercept = 0, slope = 1, col = 2, lty = 2, alpha = 1/2) +
+    ggtitle("Estimates of Variance Inflation Parameter")
+
+longdat <- melt(data = scale_val_mat, measure.vars = c("succ_null_mle", "succ_random"),
+                id.vars = c("Nsamp", "nullpi"))
+longdat$Nsamp <- longdat$Nsamp * 2
+ggplot(data = longdat, mapping = aes(x = variable, y = value, fill = variable)) +
+    geom_boxplot() +
+    facet_grid(nullpi ~ Nsamp) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.3)) +
+    xlab("Method") + ylab("Variance Inflation") +
+    ggtitle("Estimates of Variance Inflation Parameter")
+```
+
+## Likelihood Ratios
+
+Now I'll just look at starting at the null-MLEs and compare the maximized log-likelihood vs the null maximized log-likelihood. All of the likelihood ratios are less than 1.
+```{r}
+llike_nml <- select(llike_mat, c(Nsamp, nullpi, succ_null_mle))
+colnames(llike_nml)[3] <- "max_loglike"
+llike_nml$null_loglike <- null_llike_mat$succ_null_mle
+llike_nml$logLR <- llike_nml$null_loglike - llike_nml$max_loglike
+llike_nml$pi0hat <- pi0_mat$succ_null_mle
+pi0_max <- pi0_mat$succ_null_mle[which.max(llike_nml$logLR)]
+
+ggplot(data = llike_nml, mapping = aes(x = as.factor(2 * Nsamp), y = exp(logLR))) +
+    geom_boxplot() +
+    facet_grid(.~nullpi) +
+    ylab("Likelihood Ratio") +
+    xlab("Sample Size") +
+    ggtitle("Likelihood Ratios")
+```
+
+Well, the max log-likelihood ratio is actually `r max(llike_nml$logLR)`, but the estimate of $\pi_0$ in this scenario is `r pi0_max`. In general, the estimates of $\pi_0$ for all scenarios that have a log-likelihood ratio greater than 0 is
+```{r}
+pi0_mat$succ_null_mle[llike_nml$logLR > 0]
+boxplot(pi0_mat$succ_null_mle[llike_nml$logLR > 0])
+```
+
+So I think the optimization algorithm leaves the all-null setting then reaches some tolerance threshold before returning to the all-null setting.
+
+## Same as above but using random starting locations
+Now I'll just look at starting at random locations and compare the maximized log-likelihood vs the null maximized log-likelihood. All of the likelihood ratios are less than 1.
+```{r}
+llike_ran <- select(llike_mat, c(Nsamp, nullpi, succ_random))
+colnames(llike_ran)[3] <- "max_loglike"
+llike_ran$null_loglike <- null_llike_mat$succ_random
+llike_ran$logLR <- llike_ran$null_loglike - llike_ran$max_loglike
+llike_ran$pi0hat <- pi0_mat$succ_random
+pi0_max <- pi0_mat$succ_random[which.max(llike_ran$logLR)]
+
+ggplot(data = llike_ran, mapping = aes(x = as.factor(2 * Nsamp), y = exp(logLR))) +
+    geom_boxplot() +
+    facet_grid(.~nullpi) +
+    ylab("Likelihood Ratio") +
+    xlab("Sample Size") +
+    ggtitle("Likelihood Ratios")
+```
+
+Well, the max log-likelihood ratio is actually `r max(llike_ran$logLR)`, but the estimate of $\pi_0$ in this scenario is `r pi0_max`. In general, the estimates of $\pi_0$ for all scenarios that have a log-likelihood ratio greater than 0 is
+```{r}
+pi0_mat$succ_random[llike_ran$logLR > 0]
+boxplot(pi0_mat$succ_random[llike_ran$logLR > 0])
+```
+
+\clearpage
+
+```{r}
+sessionInfo()
+```

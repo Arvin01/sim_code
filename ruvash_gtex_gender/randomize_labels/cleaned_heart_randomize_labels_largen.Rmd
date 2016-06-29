@@ -1,0 +1,168 @@
+---
+title: "Initial GTEX Analysis"
+author: David Gerard
+output: pdf_document
+date: "`r Sys.Date()`"
+bibliography: gtex_bib.bib
+---
+
+# Abstract
+For large n, all methods do well in the all null setting
+
+# Brief Summary
+Read in the cleaned heart gtex data and estimate the number of hidden confounders with `sva::num.sv()`.
+```{r, cache = TRUE}
+set.seed(818)
+library(ggplot2)
+library(xtable)
+load(file = "../output/cleaned_gtex_data/heart.Rd")
+n <- ncol(heart$Y)
+Y <- heart$Y[, sample(1:ncol(heart$Y), size = n)]
+X <- model.matrix(~sample(c(0, 1), size = ncol(Y), replace = TRUE))
+colnames(X) <- c("Intercept", "Treatment")
+ctl <- heart$ctl
+k <- sva::num.sv(dat = Y, mod = X)
+k
+```
+
+$Y$ is log(COUNTS + 1) of the top `r nrow(heart$Y)` expressed genes (genes with at least 10 reads per sample on average). Samples from the same individual were averaged, resulting in $n =$ `r ncol(heart$Y)`. $X$ contains an intercept and a random indicator for "treatment" vs "control". Since the treatment label is random, all genes are null.
+
+Control genes are the housekeeping genes identified by @eisenberg2013human. This is a different list than that used by @gagnon2012using, which was drawn from @eisenberg2003human. In total, there are `r sum(heart$ctl)` housekeeping genes among the `r nrow(heart$Y)` most expressed genes in the GTEX heart data.
+
+# Analysis
+
+## Fit RUVASH
+When I fit RUVASH on the small data, it works great
+```{r, cache = TRUE}
+ruvash_out <- ashr::ash_ruv(Y = t(Y), X = X, ctl = ctl, k = k,
+                            posthoc_inflate = TRUE)
+ruvash_out$fitted.g$pi[1]
+qvalue::qvalue(ruvash_out$ruv$pvalues)$pi0
+
+hist(ruvash_out$ruv$pvalues, main = "RUVASH p-values")
+hist(ruvash_out$ruv$pvalues[ctl], main = "RUVASH p-values of control genes")
+```
+
+## Fit competitors
+OLS
+```{r, cache = TRUE}
+limmaout   <- limma::lmFit(Y, X)
+betahat_ols    <- limmaout$coefficients[, 2]
+sebetahat_ols  <- limmaout$stdev.unscaled[, 2] * limmaout$sigma
+ols_p      <- 2 * (1 - pt(abs(betahat_ols / sebetahat_ols), df = nrow(X) - ncol(X)))
+ols_q      <- qvalue::qvalue(ols_p)
+ols_a      <- ashr::ash(betahat = betahat_ols, sebetahat = sebetahat_ols)
+
+ols_q$pi0
+ols_a$fitted.g$pi[1]
+
+hist(ols_p, main = "OLS p-values")
+hist(ols_p[ctl], main = "OLS p-values for control genes")
+```
+
+SVA
+```{r, cache = TRUE}
+trash      <- capture.output(sva_out <- sva::sva(dat = Y, mod = X, n.sv = k))
+X.sv       <- cbind(X, sva_out$sv)
+limmaout   <- limma::lmFit(Y, X.sv)
+betahat_sva    <- limmaout$coefficients[, 2]
+sebetahat_sva  <- limmaout$stdev.unscaled[, 2] * limmaout$sigma
+sva_p      <- 2 * (1 - pt(abs(betahat_sva / sebetahat_sva), df = nrow(X.sv) - ncol(X.sv)))
+sva_q      <- qvalue::qvalue(sva_p)
+sva_a      <- ashr::ash(betahat = betahat_sva, sebetahat = sebetahat_sva)
+
+sva_q$pi0
+sva_a$fitted.g$pi[1]
+
+hist(sva_p, main = "SVA p-values")
+hist(sva_p[ctl], main = "SVA p-values for control genes")
+```
+RUV2 and RUV4
+```{r, cache = TRUE}
+ruv4out <- ruv::RUV4(Y = t(Y), X = X[, 2, drop = FALSE], ctl = ctl,
+                     Z = X[, -2, drop = FALSE], k = k)
+betahat   <- ruv4out$betahat
+sebetahat <- sqrt(ruv4out$sigma2 * ruv4out$multiplier)
+ruv4_q    <- qvalue::qvalue(ruv4out$p)
+ruv4_a    <- ashr::ash(betahat = betahat, sebetahat = sebetahat)
+ruv4_q$pi0
+ruv4_a$fitted.g$pi[1]
+
+hist(ruv4out$p, main = "RUV4 p-values")
+hist(ruv4out$p[ctl], main = "RUV4 p-values for control genes")
+
+
+ruv2out <- ruv::RUV2(Y = t(Y), X = X[, 2, drop = FALSE], ctl = ctl,
+                     Z = X[, -2, drop = FALSE], k = k)
+betahat   <- ruv2out$betahat
+sebetahat <- sqrt(ruv2out$sigma2 * ruv2out$multiplier)
+ruv2_q    <- qvalue::qvalue(ruv2out$p)
+ruv2_a    <- ashr::ash(betahat = betahat, sebetahat = sebetahat)
+hist(ruv2out$p, main = "RUV2 p-values")
+hist(ruv2out$p[ctl], main = "RUV2 p-values for control genes")
+
+ruv2_q$pi0
+ruv2_a$fitted.g$pi[1]
+```
+CATErr and CATEnc
+```{r, cache = TRUE}
+cate_nc <- cate::cate(~Treatment, Y = t(Y),
+                      X.data = as.data.frame(X[, 2, drop = FALSE]),
+                      r = k, adj.method = "nc", fa.method = "pc",
+                      nc = ctl, calibrate = FALSE)
+betahat_catenc   <- cate_nc$beta
+sebetahat_catenc <- sqrt(cate_nc$beta.cov.row * cate_nc$beta.cov.col) / sqrt(nrow(X))
+catenc_q  <- qvalue::qvalue(cate_nc$beta.p.value)
+catenc_a  <- ashr::ash(betahat_catenc, sebetahat_catenc)
+catenc_q$pi0
+catenc_a$fitted.g$pi[1]
+
+hist(cate_nc$beta.p.value, main = "CATE NC p-values")
+hist(cate_nc$beta.p.value[ctl], main = "CATE NC p-values for control genes")
+```
+
+```{r, cache = TRUE}
+cate_rr <- cate::cate(~Treatment, Y = t(Y),
+                      X.data = as.data.frame(X[, 2, drop = FALSE]),
+                      r = k, adj.method = "rr", fa.method = "pc",
+                      calibrate = FALSE)
+betahat   <- cate_rr$beta
+sebetahat <- sqrt(cate_rr$beta.cov.row * cate_rr$beta.cov.col) / sqrt(nrow(X))
+caterr_q  <- qvalue::qvalue(cate_rr$beta.p.value)
+caterr_a  <- ashr::ash(betahat, sebetahat)
+caterr_q$pi0
+caterr_a$fitted.g$pi[1]
+
+hist(cate_rr$beta.p.value, main = "CATErr p-values")
+hist(cate_rr$beta.p.value[ctl], main = "CATErr p-values for control genes")
+```
+
+## Compare $\pi_0$ estimates
+
+
+## Calibrated CATE
+```{r, cache = TRUE}
+cate_nc_cal <- cate::cate(~Treatment, Y = t(Y),
+                      X.data = as.data.frame(X[, 2, drop = FALSE]),
+                      r = k, adj.method = "nc", fa.method = "pc",
+                      nc = ctl, calibrate = TRUE)
+hist(cate_nc_cal$beta.p.value, main = "CATE NC Calibrated p-values")
+hist(cate_nc_cal$beta.p.value[ctl], main = "CATE NC Calibrated p-values for control genes")
+cate_nc_cal_q <- qvalue::qvalue(cate_nc_cal$beta.p.value)
+cate_nc_cal_q$pi0
+
+cate_rr_cal <- cate::cate(~Treatment, Y = t(Y),
+                      X.data = as.data.frame(X[, 2, drop = FALSE]),
+                      r = k, adj.method = "rr", fa.method = "pc",
+                      calibrate = TRUE)
+hist(cate_rr_cal$beta.p.value, main = "CATErr Calibrated p-values")
+hist(cate_rr_cal$beta.p.value[ctl], main = "CATErr Calibrated p-values for control genes")
+cate_rr_cal_q <- qvalue::qvalue(cate_rr_cal$beta.p.value)
+cate_rr_cal_q$pi0
+```
+
+```{r}
+sessionInfo()
+```
+
+# References

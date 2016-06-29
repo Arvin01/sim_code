@@ -1,0 +1,40 @@
+---
+title: "Limma is scale-equivariant"
+author: David Gerard
+output: rmarkdown::html_document
+date: "`r Sys.Date()`"
+---
+
+# Abstract
+This is just a quick check to see if `limma` is scale equivariante.
+
+# Results
+If `limma` is scale equivariant, then
+\begin{align}
+\hat{\sigma}^2(cx) = c\hat{\sigma}^2(x),
+\end{align}
+for $x$ our data and $c$ some constant.
+
+Generate random variances. Limma is scale-equivariant.
+```{r}
+library(ggplot2)
+n <- 100
+deg <- 1
+sig <- rchisq(n = n, df = deg) / deg
+scale_val <- 1/3
+
+limma1_out <- limma::squeezeVar(var = sig, df = 10)
+limma2_out <- limma::squeezeVar(var = scale_val * sig, df = 10)
+
+qplot(limma1_out$var.post, limma2_out$var.post / scale_val) +
+    geom_abline(slope = 1, intercept = 0, col = 2, lwd = 1, lty = 2, alpha = 1/2) +
+    xlab(expression({hat(sigma)^2}(x))) +
+    ylab(expression({hat(sigma)^2}(x * c) / c)) +
+    ggtitle("Equivariant is Points Lie on Line")
+```
+
+The limma estimates do change when doing additive inflation.
+
+```{r}
+sessionInfo()
+```

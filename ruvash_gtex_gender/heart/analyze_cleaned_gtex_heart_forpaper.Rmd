@@ -1,0 +1,233 @@
+---
+title: "Initial GTEX Analysis"
+author: David Gerard
+output: pdf_document
+date: "`r Sys.Date()`"
+bibliography: gtex_bib.bib
+---
+
+# Brief Summary
+Read in the cleaned heart gtex data and estimate the number of hidden confounders with `sva::num.sv()`.
+```{r, cache = TRUE}
+library(ggplot2)
+library(xtable)
+load(file = "../output/cleaned_gtex_data/heart.Rd")
+k <- sva::num.sv(dat = heart$Y, mod = heart$X)
+k
+```
+
+$Y$ is log(COUNTS + 1) of the top `r nrow(heart$Y)` expressed genes (genes with at least 10 reads per sample on average). Samples from the same individual were averaged, resulting in $n =$ `r ncol(heart$Y)`. $X$ contains just an intercept and an indicator for gender. The idea here is that genes on sex chromosomes are "positive controls," so the best method will be that which has the most genes on sex chromosomes among the most significant genes. This is the setup that @gagnon2012using and @wang2015confounder use to evaluate performance between these confounder adjustment methods.
+
+Control genes are the housekeeping genes identified by @eisenberg2013human. This is a different list than that used by @gagnon2012using, which was drawn from @eisenberg2003human. In total, there are `r sum(heart$ctl)` housekeeping genes among the `r nrow(heart$Y)` most expressed genes in the GTEX heart data.
+
+# Analysis
+
+## Fit competitors
+OLS
+```{r, cache = TRUE}
+limmaout   <- limma::lmFit(heart$Y, heart$X)
+betahat_ols    <- limmaout$coefficients[, 2]
+sebetahat_ols  <- limmaout$stdev.unscaled[, 2] * limmaout$sigma
+ols_p      <- 2 * (1 - pt(abs(betahat_ols / sebetahat_ols), df = nrow(heart$X) - ncol(heart$X)))
+ols_q      <- qvalue::qvalue(ols_p)
+ols_a      <- ashr::ash(betahat = betahat_ols, sebetahat = sebetahat_ols)
+
+eps <- min(ols_p[!(ols_p == 0)])
+ols_p[ols_p == 0] <- eps
+ols_p[ols_p == 1] <- 1 - eps
+ols_l      <- locfdr::locfdr(zz = qnorm(ols_p), plot = FALSE)
+
+ols_q$pi0
+ols_a$fitted.g$pi[1]
+```
+
+SVA
+```{r, cache = TRUE}
+trash      <- capture.output(sva_out <- sva::sva(dat = heart$Y, mod = heart$X, n.sv = k))
+X.sv       <- cbind(heart$X, sva_out$sv)
+limmaout   <- limma::lmFit(heart$Y, X.sv)
+betahat_sva    <- limmaout$coefficients[, 2]
+sebetahat_sva  <- limmaout$stdev.unscaled[, 2] * limmaout$sigma
+sva_p      <- 2 * (1 - pt(abs(betahat_sva / sebetahat_sva), df = nrow(X.sv) - ncol(X.sv)))
+sva_q      <- qvalue::qvalue(sva_p)
+sva_a      <- ashr::ash(betahat = betahat_sva, sebetahat = sebetahat_sva)
+
+eps <- min(sva_p[!(sva_p == 0)])
+sva_p[sva_p == 0] <- eps
+sva_p[sva_p == 1] <- 1 - eps
+sva_l      <- locfdr::locfdr(zz = qnorm(sva_p), plot = FALSE)
+
+sva_q$pi0
+sva_a$fitted.g$pi[1]
+```
+RUV2 and RUV4
+```{r, cache = TRUE}
+ruv4out <- ruv::RUV4(Y = t(heart$Y), X = heart$X[, 2, drop = FALSE], ctl = heart$ctl,
+                     Z = heart$X[, -2, drop = FALSE], k = k)
+betahat   <- ruv4out$betahat
+sebetahat <- sqrt(ruv4out$sigma2 * ruv4out$multiplier)
+ruv4_q    <- qvalue::qvalue(ruv4out$p)
+ruv4_a    <- ashr::ash(betahat = betahat, sebetahat = sebetahat)
+ruv4_q$pi0
+ruv4_a$fitted.g$pi[1]
+
+ruv2out <- ruv::RUV2(Y = t(heart$Y), X = heart$X[, 2, drop = FALSE], ctl = heart$ctl,
+                     Z = heart$X[, -2, drop = FALSE], k = k)
+betahat   <- ruv2out$betahat
+sebetahat <- sqrt(ruv2out$sigma2 * ruv2out$multiplier)
+ruv2_q    <- qvalue::qvalue(ruv2out$p)
+ruv2_a    <- ashr::ash(betahat = betahat, sebetahat = sebetahat)
+
+
+ruv2_q$pi0
+ruv2_a$fitted.g$pi[1]
+```
+CATErr and CATEnc
+```{r, cache = TRUE}
+cate_nc <- cate::cate(~Gender, Y = t(heart$Y),
+                      X.data = as.data.frame(heart$X[, 2, drop = FALSE]),
+                      r = k, adj.method = "nc", fa.method = "pc",
+                      nc = heart$ctl, calibrate = FALSE)
+betahat_catenc   <- cate_nc$beta
+sebetahat_catenc <- sqrt(cate_nc$beta.cov.row * cate_nc$beta.cov.col) / sqrt(nrow(heart$X))
+catenc_q  <- qvalue::qvalue(cate_nc$beta.p.value)
+catenc_a  <- ashr::ash(betahat_catenc, sebetahat_catenc)
+catenc_q$pi0
+catenc_a$fitted.g$pi[1]
+```
+
+```{r, cache = TRUE}
+cate_rr <- cate::cate(~Gender, Y = t(heart$Y),
+                      X.data = as.data.frame(heart$X[, 2, drop = FALSE]),
+                      r = k, adj.method = "rr", fa.method = "pc",
+                      calibrate = FALSE)
+betahat   <- cate_rr$beta
+sebetahat <- sqrt(cate_rr$beta.cov.row * cate_rr$beta.cov.col) / sqrt(nrow(heart$X))
+caterr_q  <- qvalue::qvalue(cate_rr$beta.p.value)
+caterr_a  <- ashr::ash(betahat, sebetahat)
+caterr_q$pi0
+caterr_a$fitted.g$pi[1]
+```
+
+## Compare $\pi_0$ estimates
+```{r}
+propnull <- 1 - mean(heart$chrom == "X" | heart$chrom == "Y")
+```
+
+But proportion of non-sex chromosomes is `r propnull`
+
+```{r, cache = TRUE}
+get_inflate <- function(told, propnull) {
+    crit_fun <- function(mult, told, propnull) {
+        tnew <- told / mult
+        ptemp <- 2 * (1 - pnorm(abs(tnew)))
+        return(qvalue::qvalue(ptemp)$pi0 - propnull)
+    }
+    uniroot(f = crit_fun, interval = c(1, 2), told = told, propnull = propnull)$root
+}
+
+cate_rr_inflate <- get_inflate(told = cate_rr$beta.t, propnull = propnull)
+cate_nc_inflate <- get_inflate(told = cate_nc$beta.t, propnull = propnull)
+ols_inflate     <-get_inflate(told = betahat_ols / sebetahat_ols, propnull = propnull)
+sva_inflate     <-get_inflate(told = betahat_sva / sebetahat_sva, propnull = propnull)
+ruv4_inflate     <-get_inflate(told = ruv4out$t, propnull = propnull)
+ruv2_inflate     <-get_inflate(told = ruv2out$t, propnull = propnull)
+```
+
+Number of top n genes on sex chromosomes
+```{r}
+onsex <- heart$chrom == "X" | heart$chrom == "Y"
+
+num_true <- function(pvalue, onsex, n) {
+    sum(onsex[order(pvalue)][1:n])
+}
+
+num_look <- 100
+num_onsex_100 <- rep(NA, length = 6)
+num_onsex_100[1] <- num_true(ols_p, onsex, num_look)
+num_onsex_100[2] <- num_true(sva_p, onsex, num_look)
+num_onsex_100[3] <- num_true(ruv2out$p, onsex, num_look)
+num_onsex_100[4] <- num_true(ruv4out$p, onsex, num_look)
+num_onsex_100[5] <- num_true(cate_nc$beta.p.value, onsex, num_look)
+num_onsex_100[6] <- num_true(cate_rr$beta.p.value, onsex, num_look)
+
+num_look <- 50
+num_onsex_50 <- rep(NA, length = 6)
+num_onsex_50[1] <- num_true(ols_p, onsex, num_look)
+num_onsex_50[2] <- num_true(sva_p, onsex, num_look)
+num_onsex_50[3] <- num_true(ruv2out$p, onsex, num_look)
+num_onsex_50[4] <- num_true(ruv4out$p, onsex, num_look)
+num_onsex_50[5] <- num_true(cate_nc$beta.p.value, onsex, num_look)
+num_onsex_50[6] <- num_true(cate_rr$beta.p.value, onsex, num_look)
+```
+
+```{r, results = "asis"}
+name_vec <- c("OLS", "SVA", "RUV2", "RUV4", "CATEnc", "CATErr")
+tab_out <- cbind(c(ols_q$pi0, sva_q$pi0, ruv2_q$pi0, ruv4_q$pi0, catenc_q$pi0,
+                   caterr_q$pi0),
+                 c(ols_a$fitted.g$pi[1], sva_a$fitted.g$pi[1], ruv2_a$fitted.g$pi[1],
+                   ruv4_a$fitted.g$pi[1], catenc_a$fitted.g$pi[1],
+                   caterr_a$fitted.g$pi[1]),
+                 c(ols_inflate, sva_inflate, ruv2_inflate, ruv4_inflate,
+                   cate_nc_inflate, cate_rr_inflate),
+                 num_onsex_50,
+                 num_onsex_100)
+row.names(tab_out) <- name_vec
+colnames(tab_out) <- c("qvalue", "ashr", "Inflation Needed", "#Correct Top 50", "#Correct Top 100")
+
+xtable(tab_out, caption = "The rows are the different confounder adjustment methods. The first two columns are the estimates of $\\pi_0$ using either \\texttt{qvalue} or \\texttt{ashr}. The third column is the inflation on the standard deviation needed so that the \\texttt{qvalue} will return an estimate of $\\pi_0$ that is equal to the observed proportion of genes on sex chromosomes. The fourth and fifth columns are the number of sex chromosome genes among the most significant 50 or 100 genes.", display = c("f", "f", "f", "f", "d", "d"))
+```
+
+
+## Calibrated CATE
+```{r, cache = TRUE}
+cate_nc_cal <- cate::cate(~Gender, Y = t(heart$Y),
+                      X.data = as.data.frame(heart$X[, 2, drop = FALSE]),
+                      r = k, adj.method = "nc", fa.method = "pc",
+                      nc = heart$ctl, calibrate = TRUE)
+
+cate_rr_cal <- cate::cate(~Gender, Y = t(heart$Y),
+                      X.data = as.data.frame(heart$X[, 2, drop = FALSE]),
+                      r = k, adj.method = "rr", fa.method = "pc",
+                      calibrate = TRUE)
+```
+
+```{r}
+cate_nc_cal_q <- qvalue::qvalue(cate_nc_cal$beta.p.value)
+cate_nc_cal_q$pi0
+
+
+cate_rr_cal_q <- qvalue::qvalue(cate_rr_cal$beta.p.value)
+cate_rr_cal_q$pi0
+
+hist(cate_rr_cal$beta.p.value)
+hist(cate_nc_cal$beta.p.value)
+```
+
+
+## RUVASH
+```{r, cache = TRUE}
+ruvash_out <- ashr::ash_ruv(Y = t(heart$Y), X = heart$X, ctl = heart$ctl, k = k,
+                            posthoc_inflate = FALSE)
+ruvash_out$fitted.g$pi[1]
+qvalue::qvalue(ruvash_out$ruv$pvalues)$pi0
+
+hist(ruvash_out$ruv$pvalues)
+```
+
+```{r, eval = FALSE, echo = FALSE}
+names(ruvash_out$ruv)
+sqrt(ruvash_out$ruv$multiplier)
+names(cate_nc)
+mad(cate_nc$beta.t)
+mad(ruvash_out$ruv$tstats) * sqrt(ruvash_out$ruv$multiplier)
+
+plot(sebetahat_catenc, ruvash_out$ruv$sebetahat_ols)
+abline(0, 1, col = 2, lwd = 2)
+```
+
+```{r}
+sessionInfo()
+```
+
+# References
