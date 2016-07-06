@@ -1,0 +1,174 @@
+---
+title: "Different Implementations of RUVASH"
+Author: "David Gerard"
+Date: "`r Sys.Date()`"
+output: rmarkdown::pdf_document
+fig_caption: yes
+---
+
+
+# Abstract
+I run RUVASH under six different scenarios and RUV + ASH under three different scenarios.
+
+# Motivation
+The model is
+\begin{align}
+Y &= X\beta + Z\alpha + E,\\
+E &\sim N_{n \times p}(0, \Sigma \otimes I_n)\\
+\Sigma &= diag(\sigma_1^2,\ldots,\sigma_p^2).
+\end{align}
+RUVASH will obtain estimates $\hat{Z}$, $\hat{\alpha}$, $\hat{\Sigma}$, and a variance inflation term $\hat{\lambda}$. In order to obtain estimates of the variances of $\hat{\beta}$ (in order to use in running ASH), I've been multiplying $\hat{\lambda}\hat{\Sigma}$ by the diagonal elements of $(X^TX)^{-1}$. I think this is wrong and what I should be doing is multiplying $\hat{\lambda}\hat{\Sigma}$ by the diagonal elements of $([X, \hat{Z}]^T[X, \hat{Z}])^{-1}$. I run comparisons of this approach here.
+
+# Simulation Setup
+I ran through 100 repetitions of generating data from GTEX muscle data under the following parameter conditions:
+
+* $n \in \{10, 20, 40\}$,
+* $p = 1000$.
+* $\pi_0 \in \{0.5, 0.9, 1\}$,
+* The alternative distribution being just a standard normal. New alternatives are generated every iteration.
+
+I extracted the most expressed $p$ genes from the GTEX muscle data and $n$ samples are chosen at
+random. Half of these samples are randomly given the "treatment"
+label 1, the other half given the "control" label 0. Of the $p$
+genes, $\pi_0p$ were chosen to be non-null. Signal was added by a
+Poisson-thinning approach, where the log-2 fold change was sampled from a standard normal.
+That is
+\begin{align}
+  A_1,\ldots,A_{p/2} &\sim N(0, 1)\\
+  B_i &= 2^{A_i} \text{ for } i = 1,\ldots, p/2,
+\end{align}
+If $A_i > 0$ then we replace $Y_{[1:(n/2), i]}$ with $Binom(Y_{[j,i]}, 1 / B_i)$ for $j = 1,\ldots, n/2$. If $A_i < 0$ then we replace $Y_{[(n/2 + 1):n, i]}$ with $Binom(Y_{[j,i]}, B_i)$ for $j = n/2 + 1,\ldots, n$.
+
+I now describe the justification for this. Suppose that
+\begin{align}
+Y_{ij} \sim Poisson(\lambda_j).
+\end{align}
+Let $x_{i}$ be the indicator of treatment vs control for individual $i$. Let $\Omega$ be the set of non-null genes. Let $Z$ be the new dataset derived via the steps above. That is
+\begin{align}
+Z_{ij} | Y_{ij}=
+\begin{cases}
+Binom(Y_{ij}, 2 ^ {A_{j}x_i}) & \text{if } A_{j} < 0 \text{ and } j \in \Omega\\
+Binom(Y_{ij}, 2 ^ {-A_{j}(1 - x_i)}) & \text{if } A_{j} > 0 \text{ and } j \in \Omega\\
+Y_{ij} & \text{if } j \not\in \Omega.
+\end{cases}
+\end{align}
+Then
+\begin{align}
+Z_{ij} | A_{j}, A_{j} < 0, j \in \Omega &\sim Poisson(2^{A_{j}x_i}\lambda_j)\\
+Z_{ij} | A_{j}, A_{j} > 0, j \in \Omega &\sim Poisson(2^{-A_{j}(1 - x_i)}\lambda_j),
+\end{align}
+and
+\begin{align}
+E[\log_2(Z_{ij}) - \log_2(Z_{kj}) | A_{j}, A_{j} < 0, j \in \Omega] &\approx A_{j}x_i - A_{j}x_k, \text{ and}\\
+E[\log_2(Z_{ij}) - \log_2(Z_{kj}) | A_{j}, A_{j} > 0, j \in \Omega] &\approx -A_{j}(1 - x_i) + A_{j}(1 - x_k).
+\end{align}
+if individual $i$ is in the treatment group and individual $k$ is in the control group, then this just equals $A_j$. I treat the $A_j$'s as the true coefficient values when calculating the MSE.
+
+# Methods
+The notation in the plots below is:
+
+\begin{itemize}
+\item ruvash\_new\_u: $\hat{\Sigma}$ is not limmashrunk and multply $\hat{\lambda}\hat{\Sigma}$ by the diagonal elements of $([X, Z]^T[X, Z])^{-1}$.
+\item ruvash\_new\_u: $\hat{\Sigma}$ is limmashrunk and multply $\hat{\lambda}\hat{\Sigma}$ by the diagonal elements of $([X, Z]^T[X, Z])^{-1}$.
+\item ruvash\_old\_un: $\hat{\Sigma}$ is not limmashrunk and multply $\hat{\lambda}\hat{\Sigma}$ by the diagonal elements of $(X^TX)^{-1}$, but not $n / (n - k - q)$.
+\item ruvash\_old\_sn: $\hat{\Sigma}$ is limmashrunk and multply $\hat{\lambda}\hat{\Sigma}$ by the diagonal elements of $(X^TX)^{-1}$, but not $n / (n - k - q)$.
+\item ruvash\_old\_ui: $\hat{\Sigma}$ is not limmashrunk and multply $\hat{\lambda}\hat{\Sigma}$ by the diagonal elements of $(X^TX)^{-1}$ and $n / (n - k - q)$.
+\item ruvash\_old\_ui: $\hat{\Sigma}$ is limmashrunk and multply $\hat{\lambda}\hat{\Sigma}$ by the diagonal elements of $(X^TX)^{-1}$ and $n / (n - k - q)$.
+\item ash\_ruvinv: Run `ruv::RUVinv` then ASH. RUVinv is RUV4 using the maximum allowed number of factors given the number of control genes, followed by a method-of-moments approach to estimating the variances that the RUV folks call the "inverse-method".
+\item ash\_ruvrinv: A ridged version of RUV-inverse.
+\item ash\_ruv4: Run `ruv::RUV4` followed by ASH (no variance inflation).
+\end{itemize}
+
+# Results
+The new multiplier seems to work slightly better than not including it. I don't think the ad-hoc inflation is really needed.
+
+Interestingly, AUC improved a little bit when you use all of the factors you can (for RUVinv). I wonder if RUVASH would work really well in this scenario.
+
+
+# Plots
+
+```{r, echo = FALSE}
+library(ggplot2)
+library(reshape2)
+library(tidyr)
+
+pi0_mat <- read.csv("pi0_ruvash_adinf.csv")
+mse_mat <- read.csv("mse_ruvash_adinf.csv")
+auc_mat <- read.csv("auc_ruvash_adinf.csv")
+scale_mat <- read.csv("scale_ruvash_adinf.csv")
+
+
+## pi0_plot
+nullpi_seq <- unique(pi0_mat$nullpi)
+nsamp_seq <- unique(pi0_mat$Nsamp)
+dummy_dat <- expand.grid(nullpi_seq, nsamp_seq)
+colnames(dummy_dat) <- c("nullpi", "Nsamp")
+
+name_vec <- colnames(pi0_mat)
+colnames(pi0_mat) <- gsub("pi0hat_", "", x = name_vec)
+long_dat <- melt(pi0_mat, id.vars = c("nullpi", "Nsamp"),
+                 measure.vars = colnames(pi0_mat)[5:ncol(pi0_mat)])
+p <- ggplot(data = long_dat, mapping = aes(x = variable, y = value, fill = variable))
+p <- p + facet_grid(nullpi~Nsamp) + ylab(expression(hat(pi)[0]))
+p <- p + geom_boxplot(size = 0.4, outlier.size = 0.4)
+p <- p + geom_hline(data = dummy_dat, aes(yintercept = nullpi), lty = 2, color = "red", lwd = 1)
+p <- p + theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.3))
+p <- p + ggtitle("Estimates of pi0 When Using Muscle Tissue")
+print(p)
+
+
+## auc_plot
+nullpi_seq <- unique(pi0_mat$nullpi)
+nsamp_seq <- unique(pi0_mat$Nsamp)
+dummy_dat <- expand.grid(nullpi_seq, nsamp_seq)
+colnames(dummy_dat) <- c("nullpi", "Nsamp")
+med_mat <- matrix(NA, nrow = (length(nullpi_seq) - 1) * length(nsamp_seq), ncol = ncol(auc_mat) - 4)
+for (index in 5:ncol(auc_mat)) {
+    form1 <- as.formula(paste(colnames(auc_mat)[index], "~ nullpi + Nsamp"))
+    out1 <- aggregate(form1, FUN = median, na.rm = TRUE,
+                      data = auc_mat)
+    med_mat[, index - 4] <- out1[, 3]
+}
+dummy_dat2 <- cbind(expand.grid(nullpi_seq[nullpi_seq != 1], nsamp_seq), apply(med_mat, 1, max))
+colnames(dummy_dat2) <- c("nullpi", "Nsamp", "max_med")
+
+name_vec <- colnames(auc_mat)
+colnames(auc_mat) <- gsub("auc_", "", x = name_vec)
+long_dat <- melt(auc_mat, id.vars = c("nullpi", "Nsamp"),
+                 measure.vars = colnames(auc_mat)[5:ncol(auc_mat)])
+p <- ggplot(data = long_dat, mapping = aes(x = variable, y = value, fill = variable))
+p <- p + facet_grid(nullpi~Nsamp) + ylab("AUC")
+p <- p + geom_boxplot(size = 0.4, outlier.size = 0.4)
+p <- p + geom_hline(data = dummy_dat2, aes(yintercept = max_med), lty = 2, color = "red", lwd = 1)
+p <- p + theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.3))
+p <- p + ggtitle("AUC When Using Muscle Tissue")
+print(p)
+
+## mse_plot
+name_vec <- colnames(mse_mat)
+colnames(mse_mat) <- gsub("mse_", "", x = name_vec)
+long_dat <- melt(mse_mat, id.vars = c("nullpi", "Nsamp"),
+                 measure.vars = colnames(mse_mat)[5:ncol(mse_mat)])
+p <- ggplot(data = long_dat, mapping = aes(x = variable, y = value, fill = variable))
+p <- p + facet_grid(nullpi~Nsamp) + ylab("MSE")
+p <- p + geom_boxplot(size = 0.4, outlier.size = 0.4)
+p <- p + theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.3))
+p <- p + ylim(0, max(mse_mat[, -c(1:4, 9)], na.rm = TRUE))
+p <- p + ggtitle("MSE When Using Muscle Tissue")
+print(p)
+
+long_dat <- melt(scale_mat, id.vars = c("Nsamp", "nullpi"),
+                 measure.vars = colnames(scale_mat)[5:ncol(scale_mat)])
+p <- ggplot(data = long_dat, mapping = aes(x = variable, y = value, fill = variable))
+p <- p + facet_grid(nullpi~Nsamp) + ylab("Scale Inflation")
+p <- p + geom_boxplot(size = 0.4, outlier.size = 0.4)
+p <- p + theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.3))
+p <- p + ggtitle("Scale Inflation When Using Muscle Tissue")
+print(p)
+
+```
+
+
+```{r}
+sessionInfo()
+```

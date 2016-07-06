@@ -1,0 +1,81 @@
+---
+title: "All-null example from heart GTEX data"
+author: David Gerard
+output: rmarkdown::html_document
+date: "`r Sys.Date()`"
+---
+
+# Abstract
+I look at an all null dataset generated from the GTEX heart
+data. I look at variance inflation for `vruv2`. The standard errors
+appear to be the exact same for non-control genes.
+
+# Data Generation
+Read in heart GTEX, take a log, select top 10000 genes.
+```{r}
+datapath <- "../../../data/gtex_tissue_gene_reads/heart.csv"
+heart <- read.csv(datapath)
+ngene <- 10000
+lheart <- log(heart[, -c(1, 2)] + 1)
+rm(heart)
+exp_vec <- rowMeans(lheart)
+gene_lab <- order(exp_vec, decreasing = TRUE)[1:ngene]
+subgheart <- lheart[gene_lab, ]
+nsamp <- 20
+ncontrol <- 1000
+```
+
+# Run RUV4, vruv4, RUV2, vruv2
+```{r}
+current_seed <- 13
+set.seed(current_seed)
+ind_pos <- sort(sample(1:ncol(subgheart), size = nsamp))
+Y <- as.matrix(subgheart[, ind_pos])
+dim(Y)
+condition <- rep(0, length = nsamp)
+condition[sample(1:length(condition), size = round(nsamp / 2))] <- 1
+X <- model.matrix(~condition)
+ctl <- rep(FALSE, length = ngene)
+ctl[sample(1:ngene, size = ncontrol)] <- TRUE
+```
+
+```{r}
+library(ggplot2)
+library(vicar)
+num_sv <- sva::num.sv(dat = Y, mod = X)
+num_sv
+ruv2out <- ruv::RUV2(Y = t(Y), X = X[, 2, drop = FALSE], ctl = ctl, k = num_sv,
+                     Z = X[, 1, drop = FALSE])
+v2out <- vruv2(Y = t(Y), X = X, ctl = ctl, k = num_sv, likelihood = "normal",
+               limmashrink = TRUE, gls = FALSE)
+
+## use limma on RUV2 for comparison purposes
+ruv2se <- sqrt(limma::squeezeVar(ruv2out$sigma2 * ruv2out$multiplier,
+                                 df = nrow(X) - ncol(X) - num_sv)$var.post)
+v2se   <- v2out$sebetahat
+mean(ruv2se)
+mean(v2se)
+
+v2out$multiplier
+
+qplot(c(ruv2se)[!ctl], c(v2se)[!ctl]) +
+    geom_abline(slope = 1, intercept = 0, col = 3, lty = 2, lwd = 1, alpha = 1/2) +
+    xlab("RUV2") + ylab("vruv2") +
+    ggtitle("Standard errors for RUV2 and vruv2 for the non-control genes")
+
+qplot(c(ruv2se)[ctl], c(v2se)[ctl]) +
+    geom_abline(slope = 1, intercept = 0, col = 3, lty = 2, lwd = 1, alpha = 1/2) +
+    xlab("RUV2") + ylab("vruv2") +
+    ggtitle("Standard Errors for RUV2 and vruv2 for the control genes")
+
+qplot(c(ruv2out$W %*% ruv2out$alpha[, ctl]), c(v2out$Zhat %*% v2out$alphahat[, ctl]),
+      alpha = I(1/10)) +
+    geom_abline(intercept = 0, slope = 1, col = 2, lty = 2, lwd = 1) +
+    xlab("RUV2") + ylab("vruv2") +
+    ggtitle("Low rank term estimates")
+
+```
+
+```{r}
+sessionInfo()
+```

@@ -1,0 +1,137 @@
+---
+title: "All-null example from heart GTEX data"
+author: David Gerard
+output: rmarkdown::html_document
+date: "`r Sys.Date()`"
+---
+
+# Abstract
+I look at an all null dataset generated from the GTEX heart data. I
+look at variance inflation for `vruv2` and `vruv4`.
+
+# Data Generation
+Read in heart GTEX, take a log, select top 10000 genes.
+```{r}
+datapath <- "../../../data/gtex_tissue_gene_reads/heart.csv"
+heart <- read.csv(datapath)
+ngene <- 10000
+lheart <- log(heart[, -c(1, 2)] + 1)
+rm(heart)
+exp_vec <- rowMeans(lheart)
+gene_lab <- order(exp_vec, decreasing = TRUE)[1:ngene]
+subgheart <- lheart[gene_lab, ]
+nsamp <- 20
+ncontrol <- 100
+```
+
+# Run RUV4, vruv4, RUV2, vruv2
+```{r}
+current_seed <- 12
+set.seed(current_seed)
+ind_pos <- sort(sample(1:ncol(subgheart), size = nsamp))
+Y <- as.matrix(subgheart[, ind_pos])
+dim(Y)
+condition <- rep(0, length = nsamp)
+condition[sample(1:length(condition), size = round(nsamp / 2))] <- 1
+X <- model.matrix(~condition)
+ctl <- rep(FALSE, length = ngene)
+ctl[sample(1:ngene, size = ncontrol)] <- TRUE
+```
+
+```{r}
+library(ggplot2)
+library(vicar)
+num_sv <- sva::num.sv(dat = Y, mod = X)
+num_sv
+v4out <- vruv4(Y = t(Y), X = X, ctl = ctl, k = num_sv, likelihood = "normal", gls = FALSE,
+               limmashrink = FALSE)
+ruv4out <- ruv::RUV4(Y = t(Y), X = X[, 2, drop = FALSE], ctl = ctl, k = num_sv,
+                     Z = X[, 1, drop = FALSE])
+
+## make sure vicar and ruv4 give same estimates in ols
+ruv4se <- sqrt(ruv4out$sigma2 * ruv4out$multiplier)
+v4se   <- v4out$sebetahat
+
+qplot(c(ruv4out$beta), c(v4out$betahat)) + xlab("RUV4") + ylab("vruv4") +
+    geom_abline(slope = 1, intercept = 0, col = 2, lty = 2, lwd = 1, alpha = 1/2) +
+    ggtitle("vicar ols and RUV4 give same mean estimates")
+
+v4out_gls <- vruv4(Y = t(Y), X = X, ctl = ctl, k = num_sv, likelihood = "normal", gls = TRUE,
+               limmashrink = FALSE)
+cateout <- cate::cate(~condition, X.data = as.data.frame(X), Y = t(Y), r = num_sv,
+                      fa.method = "pc",
+                      adj.method = "nc", nc = ctl, calibrate = FALSE)
+## make sure cate and vicar give same estimates of beta in gls
+qplot(c(cateout$beta), c(v4out_gls$betahat)) + xlab("CATEnc") + ylab("vruv4") +
+    geom_abline(slope = 1, intercept = 0, col = 2, lty = 2, lwd = 1, alpha = 1/2) +
+    ggtitle("vicar gls and CATEnc give same mean estimates")
+
+catese <- outer(c(sqrt(cateout$beta.cov.row)),
+                c(sqrt(cateout$beta.cov.col)), FUN = "*") / sqrt(ncol(Y))
+
+## make sure I got the cate standard errors correct
+qplot(c(cateout$beta)/c(catese), c(cateout$beta.t)) + xlab("Hand-derived") +
+    ylab("CATE-returned") +
+    geom_abline(slope = 1, intercept = 0, col = 2, lty = 2, lwd = 1, alpha = 1/2) +
+    ggtitle("hand-derived CATE t-stats and CATE returned t-stats are same")
+
+
+qplot(catese, v4out_gls$sebetahat) +
+    geom_abline(slope = 1, intercept = 0, col = 2, lty = 2, lwd = 1, alpha = 1/2) +
+    xlab("CATEnc") + ylab("vruv4") +
+    ggtitle("CATEnc has smaller se than vruv4")
+
+qplot(ruv4se, v4se) +
+    geom_abline(slope = 1, intercept = 0, col = 2, lty = 2, lwd = 1, alpha = 1/2) +
+    xlab("RUV4") + ylab("vruv4") +
+    ggtitle("RUV4 has smaller se than vruv4")
+
+
+pdat <- reshape2::melt(data.frame(RUV4 = c(ruv4out$p), vruv4 = c(v4out$pvalues)), id.vars = NULL)
+ggplot(data = pdat, mapping = aes(x = value, fill = variable, color = I("grey"))) +
+    geom_histogram(bins = 20) +
+    facet_grid(variable~.)
+
+## ks tests is improved in vruv4
+ks.test(c(ruv4out$p), qunif)
+ks.test(c(v4out$p), qunif)
+
+## pi0 estimates are improved
+ashr::ash(betahat = ruv4out$betahat, sebetahat = ruv4se)$fitted.g$pi[1]
+ashr::ash(betahat = v4out$betahat, sebetahat = v4se)$fitted.g$pi[1]
+
+```
+
+Now for RUV2. Doesn't really inflate at all.
+```{r}
+ruv2out <- ruv::RUV2(Y = t(Y), X = X[, 2, drop = FALSE], ctl = ctl, k = num_sv,
+                     Z = X[, 1, drop = FALSE])
+outlist <- list(Y = t(Y), X = X, ctl = ctl, num_sv = num_sv)
+save(outlist, file = "outlist.Rd")
+v2out <- vruv2(Y = t(Y), X = X, ctl = ctl, k = num_sv, likelihood = "normal",
+               limmashrink = TRUE)
+
+## use limma on RUV2 for comparison purposes
+ruv2se <- sqrt(limma::squeezeVar(ruv2out$sigma2 * ruv2out$multiplier,
+                                 df = nrow(X) - ncol(X) - num_sv)$var.post)
+v2se   <- v2out$sebetahat
+mean(ruv2se)
+mean(v2se)
+
+v2out$multiplier
+
+qplot(c(ruv2se)[!ctl], c(v2se)[!ctl]) +
+    geom_abline(slope = 1, intercept = 0, col = 3, lty = 2, lwd = 1, alpha = 1/2) +
+    xlab("RUV2") + ylab("vruv2") +
+    ggtitle("RUV2 inflation doesn't work as well right now.")
+
+qplot(c(ruv2se)[ctl], c(v2se)[ctl]) +
+    geom_abline(slope = 1, intercept = 0, col = 3, lty = 2, lwd = 1, alpha = 1/2) +
+    xlab("RUV2") + ylab("vruv2") +
+    ggtitle("RUV2 inflation doesn't work as well right now.")
+
+```
+
+```{r}
+sessionInfo()
+```
