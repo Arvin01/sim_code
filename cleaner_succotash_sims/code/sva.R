@@ -1,12 +1,8 @@
 trash      <- capture.output(sva_out <- sva::sva(dat = t(Y), mod = X, n.sv = num_sv))
 X.sv       <- cbind(X, sva_out$sv)
-sva_ols    <- get_ols(log_counts = t(Y), condition = X.sv[, -1])
-sva_ols_qv <- fit_freq_methods(out_obj = sva_ols)
-
-betahat <- sva_ols$betahat
-lfdr    <- sva_ols_qv$q_storey$lfdr
-pi0hat  <- sva_ols_qv$q_storey$pi0
-return_list <- list(betahat = betahat,
-                    lfdr = lfdr,
-                    pi0hat = pi0hat)
-return_list
+limma_out <- limma::lmFit(object = t(Y), design = X.sv)
+betahat   <- limma_out$coefficients[, 2]
+sebetahat <- limma_out$stdev.unscaled[, 2] * limma_out$sigma
+df        <- limma_out$df.residual
+tstats    <- betahat / sebetahat
+pvalues   <- 2 * pt(-abs(tstats), df = df)

@@ -13,3 +13,6 @@
 \#*
 .#*
 .sos/*
+/dsc_trial/code/.sos/
+*.log
+*.html

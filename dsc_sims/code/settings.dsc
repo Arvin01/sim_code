@@ -1,10 +1,10 @@
 simulate:
     exec: pois_thin.R
-    seed: R(1:2)
+    seed: R(1:100)
     params:
-        Nsamp: 5
-        nullpi: 0.9
-        ncontrol: 100
+        Nsamp: 5, 10, 20
+        nullpi: 0.5, 0.75, 0.9, 0.95, 1
+        ncontrol: 100, 1000
     return: Y, X, num_sv, which_null, beta_true, control_genes
 
 adjust:
@@ -27,7 +27,7 @@ sum_stat:
         df: $df
         model: "ET"
         pvalues: $pvalues
-    return: betahat, lfdr, pi0hat
+    return: lfdr, pi0hat
 
 auc:
     exec: auc.R
@@ -45,12 +45,20 @@ mse:
         betahat: $betahat
     return: mse
 
+fdr:
+    exec: fdr.R
+    .alias: fdr
+    params:
+        pvalues: $pvalues
+        fdr_level: 0.1
+        which_null: $which_null
+    return: fdp
 
 DSC:
     run: simulate *
          adjust *
          sum_stat *
-         (auc, mse)
+         (auc, fdr)
     exec_path: data_generators, adjustment_methods, summary_stat_methods, evaluations
     R_libs: limma, sva, qvalue, ruv, pROC, dcgerard/vicar, stephens999/ashr
-    output: dsc_result
+    output: dsc_results
