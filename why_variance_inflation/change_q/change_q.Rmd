@@ -1,0 +1,233 @@
+---
+title: "Why Factor Analysis Messes Up"
+author: "David Gerard"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_document
+---
+
+# Abstract
+I explore why the factor analysis is messing up the variance estimates.
+
+# Analysis
+## Generate Data Under Assumed Model
+Load in needed libraries. `vicar` contains the function `rotate_model` that will be useful.
+```{r}
+library(cate)
+library(ggplot2)
+library(vicar)
+library(reshape2)
+```
+
+Generate data under the assumed model. Here, I generate the
+confounders $Z$ such that they have in expectation an AR-1(0.7) covariance
+structure with the covariate of interest in $X$.
+```{r}
+set.seed(710)
+n <- 40
+p <- 1000
+k <- 2
+q <- 5
+ncontrol = 500
+
+## Generate Covariates and Confounders
+X <- cbind(rep(1, n), c(rep(1, n / 2), rep(0, n / 2)))
+var_x2 <- var(X[, 2])
+rho <- 0.7
+Sig <- var_x2 * rho ^ abs(outer(1:(q + 1), 1:(q + 1), "-"))
+SigZ <- Sig[2:nrow(Sig), 2:nrow(Sig)] - Sig[2:nrow(Sig), 1, drop = FALSE] %*%
+    Sig[1, 2:nrow(Sig), drop = FALSE] / var_x2
+eSigZ <- eigen(SigZ)
+SigZhalf <- eSigZ$vectors %*% diag(sqrt(eSigZ$values)) %*% t(eSigZ$vectors)
+muZ <- Sig[2:nrow(Sig), 1, drop = FALSE] %*% t(X[, 2]) / var_x2
+Z <- matrix(rnorm(q * n), nrow = n) %*% SigZhalf + t(muZ)
+cov(cbind(X, Z))
+
+## Generate Variances
+sig_diag <- rchisq(p, df = 4) / 4
+E <- matrix(rnorm(n * p), nrow = n) %*% diag(sqrt(sig_diag))
+
+## Generate Coefficients and confounders
+beta_mult <- 1
+alpha_mult <- 1
+beta <- matrix(rnorm(k * p), nrow = k) * beta_mult
+beta[2, 1:750] <- 0
+ctl <- rep(FALSE, length = p)
+ctl[1:ncontrol] <- TRUE
+alpha <- matrix(rnorm(q * p), nrow = q) * alpha_mult
+
+## Now the full data
+Y <- X %*% beta + Z %*% alpha + E
+```
+
+## Are variances accurately estimated with q correct?
+I find in this scenario that the variances are estimated accurately, but `ashr` still doesn't work well and variance inflation is a little too conservative here.
+
+The quasi-mle variance estimates are biased a little small. But the PCA variance estimates look unbiased. The adjusted variance estimates from using `vicar` look very inflated.
+```{r}
+rout <- vicar:::rotate_model(Y = Y, X = X, k = q, cov_of_interest = 2, do_factor = FALSE)
+Y3 <- rout$Y3
+
+qml_est <- cate::fa.em(Y = Y3, r = q)
+pca_est <- vicar::pca_naive(Y = Y3, r = q)
+qplot(sqrt(sig_diag), sqrt(qml_est$Sigma)) +
+    geom_abline(intercept = 0, slope = 1) +
+    xlab("True SD") +
+    ylab("Quasi-MLE SD Estimates") +
+    ggtitle("QMLE Estimates when q Correct")
+qplot(sqrt(sig_diag), sqrt(pca_est$sig_diag)) +
+    geom_abline(intercept = 0, slope = 1) +
+    xlab("True Variances") +
+    ylab("PCA Variance Estimates") +
+    ggtitle("PCA Estimates when q Correct")
+
+## Variance Estimates are very inflated
+vout <- vicar::vruv4(Y = Y, X = X, ctl = ctl, k = q, limmashrink = FALSE)
+qplot(sqrt(sig_diag), sqrt(vout$sigma2_adjusted)) +
+    geom_abline(intercept = 0, slope = 1) +
+    xlab("True Variances") +
+    ylab("PCA Variance Estimates") +
+    ggtitle("PCA Estimates when q Correct")
+vout$multiplier
+true_pi <- mean(beta[2, ] == 0)
+```
+ The estimated multiplier is very large, being `r vout$multiplier`.
+
+Let's look at the `ashr` results. The true $\pi_0$ is `r true_pi`.
+```{r}
+ash1 <- ashr::ash(betahat = vout$betahat, sebetahat = vout$sebetahat_ols)
+ash2 <- ashr::ash(betahat = vout$betahat, sebetahat = vout$sebetahat)
+```
+Using the RUV4 variance estimates, we get a $\pi_0$ estimate of `r ashr::get_pi0(ash1)`. Using variance inflation we get a $\pi_0$ estimate of `r ashr::get_pi0(ash2)`.
+
+The asymptotic variance results from CATE look really bad.
+```{r}
+## Cate Variance Estimates
+cate_nc <- cate::cate(~Treatment, Y = Y,
+                      X.data = data.frame(Treatment = X[, 2]),
+                      r = q, adj.method = "nc", nc = ctl, calibrate = FALSE)
+betahat_cate   <- c(cate_nc$beta)
+sebetahat_cate <- c(sqrt(cate_nc$beta.cov.row * cate_nc$beta.cov.col) /
+                    sqrt(nrow(X)))
+ash3 <- ashr::ash(betahat = betahat_cate, sebetahat = sebetahat_cate)
+ashr::get_pi0(ash3)
+
+plot(sebetahat_cate, vout$sebetahat_ols)
+abline(0, 1)
+```
+
+What about the `succotashr` estimates of variance inflation?
+```{r, cache = TRUE}
+## succout <- succotashr::succotash(Y = Y, X = X, k = q, optmethod = "em")
+## succout$scale_val
+## succout$pi0
+## plot(succout$betahat, ash2$PosteriorMean)
+## abline(0, 1)
+## ashr::get_pi0(vicar::ash_ruv4(Y = Y, X = X, ctl = ctl, k = q, limmashrink = FALSE))
+```
+
+## Ideal scenario with Z known.
+```{r}
+XZ <- cbind(X, Z)
+
+lmout <- limma::lmFit(object = t(Y), design = XZ)
+betahat_lm <- lmout$coefficients[, 2]
+sebetahat_lm <- lmout$sigma * lmout$stdev.unscaled[, 2]
+
+qplot(sqrt(sig_diag), lmout$sigma) +
+    geom_abline(intercept = 0, slope = 1) +
+    xlab("True SD") +
+    ylab("Oracle SD Estimates")
+
+ash4 <- ashr::ash(betahat = betahat_lm, sebetahat = sebetahat_lm)
+```
+Under the ideal scenario, the ashr estimate of $\pi_0$ is pretty good: `r ashr::get_pi0(ash4)`
+
+Let's look at the differences
+```{r}
+qplot(betahat_lm, vout$betahat) +
+    geom_abline(slope = 1, intercept = 0) +
+    xlab("betahat from lm") +
+    ylab("betahat from RUV4")
+
+true_za <- Z %*% alpha
+est_za <- vout$Zhat %*% t(vout$alphahat)
+ols_za <- Z %*% t(lmout$coefficients[, -c(1, 2)])
+
+qplot(c(true_za), c(est_za), alpha = I(1/10)) +
+    geom_abline(intercept = 0, slope = 1, color = 2, lty = 2, lwd = 1) +
+    xlab("True Zalpha") +
+    ylab("Estimated Zalpha")
+
+qplot(c(ols_za), c(est_za), alpha = I(1/10)) +
+    geom_abline(intercept = 0, slope = 1, color = 2, lty = 2, lwd = 1) +
+    xlab("OLS Zalpha") +
+    ylab("Estimated Zalpha")
+
+
+
+(mean((beta[, 2] - vout$betahat) ^ 2) + mean(sig_diag) + mean((true_za - est_za) ^ 2)) / mean(sig_diag)
+
+```
+
+## Bad estimates of q
+
+In the following plot, RUV4 is RUV4 + ash, vRUV4 is variance inflation in RUV4 + ash, vRUV4_limma is the same as the previous with all of the bells and whistles (limma shrunk variances, t-likelihood), and Cate is Cate + ash.
+```{r, cache = TRUE}
+qseq <- 1:(n - ncol(X) - 1)
+
+num_sv <- sva::num.sv(dat = t(Y), mod = X)
+cate_num_sv <- cate::est.confounder.num(~Treatment, Y = Y,
+                                        X.data = data.frame(Treatment = X[, 2]),
+                                        bcv.plot = FALSE)
+
+results_mat <- matrix(NA, nrow = length(qseq), ncol = 5)
+colnames(results_mat) <- c("Multiplier", "RUV4", "vRUV4", "vRUV4_limma", "Cate")
+for (bad_q in qseq) {
+    rout <- vicar:::rotate_model(Y = Y, X = X, k = bad_q, cov_of_interest = 2, do_factor = FALSE)
+    Y3 <- rout$Y3
+
+    vout <- vicar::vruv4(Y = Y, X = X, ctl = ctl, k = bad_q, limmashrink = FALSE)
+
+    ash_out_limma <- vicar::ash_ruv4(Y = Y, X = X, ctl = ctl, k = bad_q, limmashrink = TRUE)
+    ash1 <- ashr::ash(betahat = vout$betahat, sebetahat = vout$sebetahat_ols,
+                      df = n - ncol(X) - bad_q)
+    ash2 <- ashr::ash(betahat = vout$betahat, sebetahat = vout$sebetahat,
+                      df = n - ncol(X) - bad_q)
+
+    cate_nc <- cate::cate(~Treatment, Y = Y,
+                          X.data = data.frame(Treatment = X[, 2]),
+                          r = bad_q, adj.method = "nc", nc = ctl, calibrate = FALSE)
+    betahat_cate   <- c(cate_nc$beta)
+    sebetahat_cate <- c(sqrt(cate_nc$beta.cov.row * cate_nc$beta.cov.col) /
+                        sqrt(nrow(X)))
+    ash3 <- ashr::ash(betahat = betahat_cate, sebetahat = sebetahat_cate,
+                      df = n - ncol(X) - bad_q)
+
+    results_mat[bad_q, 1] <- vout$multiplier
+    results_mat[bad_q, 2] <- ashr::get_pi0(ash1)
+    results_mat[bad_q, 3] <- ashr::get_pi0(ash2)
+    results_mat[bad_q, 4] <- ashr::get_pi0(ash_out_limma)
+    results_mat[bad_q, 5] <- ashr::get_pi0(ash3)
+}
+
+```
+
+```{r}
+longdat <- melt(results_mat[, -1], id.vars = NULL)
+ggplot(data = longdat, mapping = aes(x = Var1, y = value, color = Var2)) +
+    geom_line() + xlab("Assumed q") + ylab(expression(hat(pi)[0])) +
+    geom_vline(xintercept = num_sv, col = 2, lty = 2) +
+    geom_hline(yintercept = true_pi, col = 4, lty = 2) +
+    ylim(0, 1)
+```
+
+The vertical line above is the estimated number of hidden confounders by `sva::num.sv`, which is `r num_sv`. Using bi-crossvalidation, CATE estimates the number of hidden confounders to be `r cate_num_sv$r`.
+
+
+
+
+
+
+```{r}
+sessionInfo()
+```

@@ -3,7 +3,7 @@ simulate:
     seed: R(1:100)
     params:
         Nsamp: 5, 10, 20
-        nullpi: 0.5, 0.75, 0.9, 0.95, 1
+        nullpi: 0.5, 0.9, 1
         ncontrol: 100, 1000
     return: Y, X, num_sv, which_null, beta_true, control_genes
 
