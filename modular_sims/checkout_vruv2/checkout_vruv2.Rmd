@@ -1,0 +1,84 @@
+---
+title: "See if new vruv2 works ok on real data"
+author: David Gerard
+date: "`r Sys.Date()`"
+output: rmarkdown::pdf_document
+bibliography: "ruv2bib.bib"
+---
+
+## Abstract
+I try out a new variance inflation formulation for RUV2 by accounting for the variance inflation during the factor analysis. It doesn't work too well.
+
+## Inflation in RUV2
+The model is
+\begin{align}
+\boldsymbol{Y} = \boldsymbol{X}\boldsymbol{\beta} + \boldsymbol{Z}\boldsymbol{\alpha} + \boldsymbol{E}
+\end{align}
+we rotate to the three models
+\begin{align}
+	\label{equation:Y1.model}
+	\boldsymbol{Y}_1 &= \boldsymbol{R}_{11}\boldsymbol{\beta}_1 + \boldsymbol{R}_{12}\boldsymbol{\beta}_2 + \boldsymbol{Z}_1\boldsymbol{\alpha} + \boldsymbol{E}_1\\
+	\label{equation:Y2.model}
+	\boldsymbol{Y}_2 &= \phantom{\boldsymbol{R}_{11}\boldsymbol{\beta}_1 +\ } \boldsymbol{R}_{22}\boldsymbol{\beta}_2 + \boldsymbol{Z}_2\boldsymbol{\alpha} + \boldsymbol{E}_2\\
+\label{equation:Y3.model}
+	\boldsymbol{Y}_3 &=
+\phantom{\boldsymbol{R}_{11}\boldsymbol{\beta}_1 +
+	\boldsymbol{R}_{12}\boldsymbol{\beta}_2 +\ }
+		\boldsymbol{Z}_3\boldsymbol{\alpha} + \boldsymbol{E}_3.
+\end{align}
+
+I earlier showed that RUV2 does the following steps:
+
+1. Estimate $\boldsymbol{Z}_2$, $\boldsymbol{Z}_3$, and $\boldsymbol{\alpha}_{\mathcal{C}}$ by using factor analysis on ${\boldsymbol{Y}_{2\mathcal{C}}\choose{\boldsymbol{Y}_{3\mathcal{C}}}}$.
+2. Estimate $\boldsymbol{\alpha}$ by regressing $\boldsymbol{Y}_3$ on $\boldsymbol{Z}_3$, i.e. $\hat{\boldsymbol{\alpha}} = (\hat{\boldsymbol{Z}}_3^T\hat{\boldsymbol{Z}}_3)^{-1}\hat{\boldsymbol{Z}}_3^T\boldsymbol{Y}_3$.
+3. Estimate $\boldsymbol{\beta}$ with $\boldsymbol{R}_{22}^{-1}(\boldsymbol{Y}_2 - \hat{\boldsymbol{Z}}_2\hat{\boldsymbol{\alpha}})$.
+
+My new idea for variance inflation in RUV2 is to account for variance inflation *during the factor analysis*. I am guessing that the reason why vruv4 works, is that for some reason, the variances in \eqref{equation:Y2.model} are different from those in \eqref{equation:Y3.model}, so under that hypothesis it would make sense to account for these differences directly in the factor analysis. That is, fit the model
+\begin{align}
+\boldsymbol{Y}_{2\mathcal{C}} &= \boldsymbol{Z}_{2}\boldsymbol{\alpha}_{\mathcal{C}} + \boldsymbol{E}_{2\mathcal{C}}\\
+\boldsymbol{Y}_{3\mathcal{C}} &= \boldsymbol{Z}_{3}\boldsymbol{\alpha}_{\mathcal{C}} + \boldsymbol{E}_{3\mathcal{C}}\\
+\boldsymbol{E}_{2\mathcal{C}} &\sim N_{k_2\times m}(0, \lambda \boldsymbol{\Sigma}_{\mathcal{C}} \otimes \boldsymbol{I}_{k_2})\\
+\boldsymbol{E}_{3\mathcal{C}} &\sim N_{n - k_2 \times m}(0, \boldsymbol{\Sigma}_{\mathcal{C}} \otimes \boldsymbol{I}_{n - k_2}).
+\end{align}
+
+In words, we perform a factor analysis where the first $k_2$ rows have
+variances that differ by a multiplication factor from the variances of
+the last $n - k_2$ rows.
+
+## Factor Analysis
+I fit the factor analysis by maximum likelihood where we assume $\boldsymbol{Z}_2$ and $\boldsymbol{Z}_3$ contain iid standard normals. This was fit using the EM described in @rubin1982algorithms but modified to estimate the variance inflation parameter. This got estimates of $\boldsymbol{\alpha}_{\mathcal{C}}$, $\boldsymbol{\Sigma}_{\mathcal{C}}$ and $\lambda$. I obtained estimates of $\boldsymbol{Z}$ by GLS as described in section 6 of @bai2012statistical.
+
+## Looking at vruv2
+Load in data and estimate number of hidden confounders.
+```{r, cache = TRUE}
+library(vicar)
+source("../code/data_generators.R")
+dout <- pois_thin(Nsamp = 20, nullpi = 1, path = "../../../data/gtex_tissue_gene_reads/",
+                  ncontrol = 2000, Ngene = 10000, tissue = "muscle")
+dout$num_sv
+```
+
+```{r, cache = TRUE}
+vout <- vruv2(Y = dout$Y, X = dout$X, ctl = dout$control_genes, k = dout$num_sv,
+              likelihood = "normal")
+vout$multiplier
+aout <- ashr::ash(betahat = vout$betahat, sebetahat = vout$sebetahat)
+ashr::get_pi0(aout)
+
+```
+The variance inflation is super small, usually less than 1, and `ashr` estimates of $\pi_0$ aren't good.
+
+Compare to `vruv4`.
+```{r, cache = TRUE}
+vout4 <- vruv4(Y = dout$Y, X = dout$X, ctl = dout$control_genes, k = dout$num_sv,
+               likelihood = "normal")
+aout <- ashr::ash(betahat = vout4$betahat, sebetahat = vout4$sebetahat)
+ashr::get_pi0(aout)
+```
+This worked fine.
+
+```{r}
+sessionInfo()
+```
+
+# References
