@@ -1,0 +1,98 @@
+---
+title: "See if new vruv2 works ok on real data"
+author: David Gerard
+date: "`r Sys.Date()`"
+output: rmarkdown::pdf_document
+---
+
+## Abstract
+I try out the new Bayesian factor analysis and compare it to other methods.
+
+## Looking at ruvb
+Load in data and estimate number of hidden confounders. I use a tiny number of control genes relative to the number of genes.
+```{r, cache = TRUE}
+library(vicar)
+library(ggplot2)
+source("../code/data_generators.R")
+dout <- pois_thin(Nsamp = 10, nullpi = 0.5, path = "../../../data/gtex_tissue_gene_reads/",
+                  ncontrol = 10, Ngene = 1000, tissue = "muscle")
+dout$num_sv
+```
+
+```{r, cache = TRUE}
+start_time <- proc.time()
+vout <- vicar::ruvb(Y = dout$Y, X = dout$X, ctl = dout$control_genes,
+                    k = dout$num_sv)
+tot_time <- proc.time() - start_time
+tot_time
+ruv3out <- vicar::ruv3(Y = dout$Y, X = dout$X, ctl = dout$control_genes,
+                       k = dout$num_sv)
+ruvimpute <- vicar::ruvimpute(Y = dout$Y, X = dout$X, ctl = dout$control_genes,
+                              k = dout$num_sv)
+```
+
+```{r}
+lfsr_order <- order(vout$lfsr)
+dat <- data.frame(index = 1:length(lfsr_order),
+                  lfsr = vout$lfsr[lfsr_order],
+                  null = as.logical(dout$which_null[!dout$control_genes][lfsr_order]))
+qplot(index, lfsr, color = null, data = dat, alpha = I(0.2))
+cate_nc <- cate::cate.fit(X.primary = dout$X[, 2, drop = FALSE],
+                          X.nuis = dout$X[, 1, drop = FALSE],
+                          Y = dout$Y,
+                          r = dout$num_sv,
+                          adj.method = "nc",
+                          nc = dout$control_genes)
+## RUVb
+sum((vout$posterior_means - dout$beta_true[!dout$control_genes]) ^ 2)
+
+## RUV3
+sum((ruv3out$betahat[!dout$control_genes] - dout$beta_true[!dout$control_genes]) ^ 2)
+
+## RUVimpute
+sum((ruvimpute$betahat[!dout$control_genes] - dout$beta_true[!dout$control_genes]) ^ 2)
+
+## CATE
+sum((c(cate_nc$beta)[!dout$control_genes] - dout$beta_true[!dout$control_genes]) ^ 2)
+
+## RUVb
+pROC::roc(response = dout$which_null[!dout$control_genes], predictor = c(vout$lfsr))$auc
+
+## RUV3
+pROC::roc(response = dout$which_null[!dout$control_genes],
+          predictor = c(ruv3out$pvalues_adjusted)[!dout$control_genes])$auc
+
+## CATE
+pROC::roc(response = dout$which_null[!dout$control_genes],
+          predictor = c(cate_nc$beta.p)[!dout$control_genes])$auc
+
+
+## Look at coverage
+cate_betahat   <- c(cate_nc$beta)
+cate_sebetahat <- c(sqrt(cate_nc$beta.cov.row * cate_nc$beta.cov.col) /
+                   sqrt(nrow(dout$X)))
+cate_lower <- cate_betahat - 2 * cate_sebetahat
+cate_upper <- cate_betahat + 2 * cate_sebetahat
+
+ruv3_lower <- ruv3out$betahat - 2 * ruv3out$sebetahat_unadjusted
+ruv3_upper <- ruv3out$betahat + 2 * ruv3out$sebetahat_unadjusted
+
+## CATE
+mean(dout$beta_true[!dout$control_genes] > cate_lower[!dout$control_genes] &
+     dout$beta_true[!dout$control_genes] < cate_upper[!dout$control_genes])
+
+## RUV3
+mean(dout$beta_true[!dout$control_genes] > ruv3_lower[!dout$control_genes] &
+     dout$beta_true[!dout$control_genes] < ruv3_upper[!dout$control_genes])
+
+## RUVB
+mean(dout$beta_true[!dout$control_genes] > vout$posterior_lower &
+     dout$beta_true[!dout$control_genes] < vout$posterior_upper)
+
+```
+
+```{r}
+sessionInfo()
+```
+
+# References

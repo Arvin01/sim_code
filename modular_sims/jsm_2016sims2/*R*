@@ -1,0 +1,815 @@
+
+R version 3.3.1 (2016-06-21) -- "Bug in Your Hair"
+Copyright (C) 2016 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+R> options(STERM='iESS', str.dendrogram.last="'", editor='emacsclient', show.error.locations=TRUE)
+R> pi0hat_ash <- read.csv("pi0hat_ash.csv")
+R> head(pi0hat_ash)
+  current_seed Nsamp nullpi ncontrol poisthin     ols  vruv4    sva
+1            1    10    0.5      100     TRUE 0.03904 0.6103 0.0524
+2            2    10    0.5      100     TRUE 0.69304 0.5597 0.5272
+3            3    10    0.5      100     TRUE 0.06155 0.5963 0.1216
+4            4    10    0.5      100     TRUE 0.61706 0.5687 0.5475
+5            5    10    0.5      100     TRUE 0.49190 0.5873 0.1836
+6            6    10    0.5      100     TRUE 0.65910 0.5080 0.5460
+  cate_nc_nocal cate_rr_nocal succotash
+1        0.3566        0.2845    0.5428
+2        0.3806        0.3661    0.5270
+3        0.3664        0.2830    0.5373
+4        0.4543        0.4464    0.5242
+5        0.2925        0.1957    0.5551
+6        0.4801        0.4844    0.4853
+R> pi0hat_ash <- read.csv("pi0hat_ash.csv")
+R> names(pi0hat_ash) <- c("Seed", "Sample Size", "Proportion Null",
+                       "Number Controls", "poisthin", "OLS", "vRUV4",
+                       "SVA", "CATEnc", "CATErr", "SUCCOTASH")
+... ... R> head(pi0hat_ash)
+  Seed Sample Size Proportion Null Number Controls poisthin     OLS  vRUV4
+1    1          10             0.5             100     TRUE 0.03904 0.6103
+2    2          10             0.5             100     TRUE 0.69304 0.5597
+3    3          10             0.5             100     TRUE 0.06155 0.5963
+4    4          10             0.5             100     TRUE 0.61706 0.5687
+5    5          10             0.5             100     TRUE 0.49190 0.5873
+6    6          10             0.5             100     TRUE 0.65910 0.5080
+     SVA CATEnc CATErr SUCCOTASH
+1 0.0524 0.3566 0.2845    0.5428
+2 0.5272 0.3806 0.3661    0.5270
+3 0.1216 0.3664 0.2830    0.5373
+4 0.5475 0.4543 0.4464    0.5242
+5 0.1836 0.2925 0.1957    0.5551
+6 0.5460 0.4801 0.4844    0.4853
+R> longdat_null <- longdat[longdat$`Proportion Null` == 1, ]
+Error: object 'longdat' not found
+R> pi0hat_ash <- read.csv("pi0hat_ash.csv")
+R> names(pi0hat_ash) <- c("Seed", "Sample Size", "Proportion Null",
+                       "Number Controls", "poisthin", "OLS", "vRUV4",
+                       "SVA", "CATEnc", "CATErr", "SUCCOTASH")
+... ... R> pi0hat_ash <- pi0hat_ash[, c(1:6, 11, 7:9, 12:13, 10)]
+Error in `[.data.frame`(pi0hat_ash, , c(1:6, 11, 7:9, 12:13, 10)) :
+  undefined columns selected
+R> pi0hat_ash$`Sample Size` <- pi0hat_ash$`Sample Size` * 2
+R> longdat <- melt(pi0hat_ash,
+...                 id.vars = c("Seed", "Sample Size", "Proportion Null", "Number Controls"),
+                measure.vars = colnames(pi0hat_ash)[-(1:5)])
+... Error: could not find function "melt"
+R> library(ggplot2)
+R> library(reshape2)
+R> pi0hat_ash <- read.csv("pi0hat_ash.csv")
+R> names(pi0hat_ash) <- c("Seed", "Sample Size", "Proportion Null",
+                       "Number Controls", "poisthin", "OLS", "vRUV4",
+                       "SVA", "CATEnc", "CATErr", "SUCCOTASH")
+... ... R> pi0hat_ash <- pi0hat_ash[, c(1:6, 11, 7:9, 12:13, 10)]
+Error in `[.data.frame`(pi0hat_ash, , c(1:6, 11, 7:9, 12:13, 10)) :
+  undefined columns selected
+R> pi0hat_ash$`Sample Size` <- pi0hat_ash$`Sample Size` * 2
+R> longdat <- melt(pi0hat_ash,
+                id.vars = c("Seed", "Sample Size", "Proportion Null", "Number Controls"),
+                measure.vars = colnames(pi0hat_ash)[-(1:5)])
+... ... R> pi0hat_ash <- read.csv("pi0hat_ash.csv")
+R> names(pi0hat_ash) <- c("Seed", "Sample Size", "Proportion Null",
+                       "Number Controls", "poisthin", "OLS", "vRUV4",
+                       "SVA", "CATEnc", "CATErr", "SUCCOTASH")
+... ... R> head(pi0hat_ash)
+  Seed Sample Size Proportion Null Number Controls poisthin     OLS  vRUV4
+1    1          10             0.5             100     TRUE 0.03904 0.6103
+2    2          10             0.5             100     TRUE 0.69304 0.5597
+3    3          10             0.5             100     TRUE 0.06155 0.5963
+4    4          10             0.5             100     TRUE 0.61706 0.5687
+5    5          10             0.5             100     TRUE 0.49190 0.5873
+6    6          10             0.5             100     TRUE 0.65910 0.5080
+     SVA CATEnc CATErr SUCCOTASH
+1 0.0524 0.3566 0.2845    0.5428
+2 0.5272 0.3806 0.3661    0.5270
+3 0.1216 0.3664 0.2830    0.5373
+4 0.5475 0.4543 0.4464    0.5242
+5 0.1836 0.2925 0.1957    0.5551
+6 0.5460 0.4801 0.4844    0.4853
+R> dim(pi0hat_ash
+... )
+[1] 600  11
+R> pi0hat_ash <- pi0hat_ash[, c(1:6, 8, 7, 9:11)]
+R> pi0hat_ash$`Sample Size` <- pi0hat_ash$`Sample Size` * 2
+R> longdat <- melt(pi0hat_ash,
+                id.vars = c("Seed", "Sample Size", "Proportion Null", "Number Controls"),
+... ...                 measure.vars = colnames(pi0hat_ash)[-(1:5)])
+R> longdat_null <- longdat[longdat$`Proportion Null` == 1, ]
+R> ggplot(longdat_null, mapping = aes(x = variable, y = value, fill = variable)) +
+    geom_boxplot() +
+    facet_grid("Controls" + `Number Controls`~ "Sample Size" + `Sample Size`) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1),
+          legend.position = "none",
+          text = element_text(size = 20)) +
+    xlab("Methods") +
+... ... ... ... ... ... ... ...     ylab("Estimated Proportion Null") +
+    geom_hline(yintercept = 1, color = "red", lty = 2) +
+    geom_vline(xintercept = 7.5, color = "blue", lty = 2, alpha = 1/2)
+... ... R> longdat_half <- longdat[longdat$`Proportion Null` == 0.5, ]
+R> ggplot(longdat_half, mapping = aes(x = variable, y = value, fill = variable)) +
+    geom_boxplot() +
+    facet_grid("Controls" + `Number Controls`~ "Sample Size" + `Sample Size`) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1),
+          legend.position = "none",
+          text = element_text(size = 20)) +
+    xlab("Methods") +
+    ylab("Estimated Proportion Null") +
+... ... ... ... ... ... ... ... ...     geom_hline(yintercept = 0.5, color = "red", lty = 2) +
+    geom_vline(xintercept = 7.5, color = "blue", lty = 2, alpha = 1/2)
+... R> longdat_half <- longdat[longdat$`Proportion Null` == 0.9, ]
+R>
+ggplot(longdat_half, mapping = aes(x = variable, y = value, fill = variable)) +
+    geom_boxplot() +
+    facet_grid("Controls" + `Number Controls`~ "Sample Size" + `Sample Size`) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1),
+          legend.position = "none",
+R> ... ... ... ... ...           text = element_text(size = 20)) +
+    xlab("Methods") +
+    ylab("Estimated Proportion Null") +
+    geom_hline(yintercept = 0.9, color = "red", lty = 2) +
+... ... ... ... ...     geom_vline(xintercept = 7.5, color = "blue", lty = 2, alpha = 1/2)
+R> rm(list = ls())
+R> auc_ash <- read.csv("pi0hat_ash.csv")
+R> names(auc_ash) <- c("Seed", "Sample Size", "Proportion Null",
+                       "Number Controls", "poisthin", "OLS", "vRUV4",
+... ...                        "SVA", "CATEnc", "CATErr", "SUCCOTASH")
+R> auc_ash <- read.csv("pi0hat_ash.csv")
+R> head(auc_ash)
+  current_seed Nsamp nullpi ncontrol poisthin     ols  vruv4    sva
+1            1    10    0.5      100     TRUE 0.03904 0.6103 0.0524
+2            2    10    0.5      100     TRUE 0.69304 0.5597 0.5272
+3            3    10    0.5      100     TRUE 0.06155 0.5963 0.1216
+4            4    10    0.5      100     TRUE 0.61706 0.5687 0.5475
+5            5    10    0.5      100     TRUE 0.49190 0.5873 0.1836
+6            6    10    0.5      100     TRUE 0.65910 0.5080 0.5460
+  cate_nc_nocal cate_rr_nocal succotash
+1        0.3566        0.2845    0.5428
+2        0.3806        0.3661    0.5270
+3        0.3664        0.2830    0.5373
+4        0.4543        0.4464    0.5242
+5        0.2925        0.1957    0.5551
+6        0.4801        0.4844    0.4853
+R> names(auc_ash) <- c("Seed", "Sample Size", "Proportion Null",
+                       "Number Controls", "poisthin", "OLS", "vRUV4",
+                       "SVA", "CATEnc", "CATErr", "SUCCOTASH")
+... ... R> auc_ash <- auc_ash[, c(1:6, 8, 7, 9:11)]
+R> auc_ash$`Sample Size` <- auc_ash$`Sample Size` * 2
+R> longdat <- melt(auc_ash,
+                id.vars = c("Seed", "Sample Size", "Proportion Null", "Number Controls"),
+                measure.vars = colnames(auc_ash)[-(1:5)])
+... ... R> longdat_null <- longdat[longdat$`Proportion Null` == 1, ]
+R> ggplot(longdat_null, mapping = aes(x = variable, y = value, fill = variable)) +
+    geom_boxplot() +
+    facet_grid("Controls" + `Number Controls`~ "Sample Size" + `Sample Size`) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1),
+... ... ... ... ...           legend.position = "none",
+          text = element_text(size = 20)) +
+    xlab("Methods") +
+    ylab("AUC") +
+... ... ... ... dev.off()
+Error: Don't know how to add dev.off() to a plot
+R> longdat_half <- longdat[longdat$`Proportion Null` == 0.9, ]
+R> ggplot(longdat_half, mapping = aes(x = variable, y = value, fill = variable)) +
+...     geom_boxplot() +
+    facet_grid("Controls" + `Number Controls`~ "Sample Size" + `Sample Size`) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1),
+          legend.position = "none",
+... ... ... ... ...           text = element_text(size = 20)) +
+    xlab("Methods") +
+    ylab("AUC") +
+... ... ...   C-c C-c
+R> ggplot(longdat_half, mapping = aes(x = variable, y = value, fill = variable)) +
+...     geom_boxplot() +
+    facet_grid("Controls" + `Number Controls`~ "Sample Size" + `Sample Size`) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1),
+          legend.position = "none",
+          text = element_text(size = 20)) +
+    xlab("Methods") +
+... ... ... ... ... ...     ylab("AUC")
+... R> rm(list = ls())
+R> auc_ash <- read.csv("auc_ash.csv")
+R> names(auc_ash) <- c("Seed", "Sample Size", "Proportion Null",
+...                        "Number Controls", "poisthin", "OLS", "vRUV4",
+...                        "SVA", "CATEnc", "CATErr", "SUCCOTASH")
+R> auc_ash <- auc_ash[, c(1:6, 8, 7, 9:11)]
+R> auc_ash$`Sample Size` <- auc_ash$`Sample Size` * 2
+R> longdat <- melt(auc_ash,
+                id.vars = c("Seed", "Sample Size", "Proportion Null", "Number Controls"),
+... ...                 measure.vars = colnames(auc_ash)[-(1:5)])
+R> longdat_half <- longdat[longdat$`Proportion Null` == 0.9, ]
+R> ggplot(longdat_half, mapping = aes(x = variable, y = value, fill = variable)) +
+    geom_boxplot() +
+    facet_grid("Controls" + `Number Controls`~ "Sample Size" + `Sample Size`) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1),
+          legend.position = "none",
+          text = element_text(size = 20)) +
+    xlab("Methods") +
+    ylab("AUC")
+... ... ... ... ... ... ... ... R> longdat_half <- longdat[longdat$`Proportion Null` == 0.5, ]
+R> ggplot(longdat_half, mapping = aes(x = variable, y = value, fill = variable)) +
+    geom_boxplot() +
+    facet_grid("Controls" + `Number Controls`~ "Sample Size" + `Sample Size`) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1),
+          legend.position = "none",
+          text = element_text(size = 20)) +
+    xlab("Methods") +
+    ylab("AUC")
+... ... ... ... ... ... ... ... R> longdat_half <- longdat[longdat$`Proportion Null` == 0.5, ]
+R> ggplot(longdat_half, mapping = aes(x = variable, y = value, fill = variable)) +
+    geom_boxplot() +
+    facet_grid(.~ "Sample Size" + `Sample Size`) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1),
+          legend.position = "none",
+          text = element_text(size = 20)) +
+    xlab("Methods") +
+    ylab("AUC")
+... ... ... ... ... ... ... ... R> rm(list= ls())
+R> library(ggplot2)
+R> library(reshape2)
+R> pi0hat_ash <- read.csv("pi0hat_ash.csv")
+names(pi0hat_ash) <- c("Seed", "Sample Size", "Proportion Null",
+                       "Number Controls", "poisthin", "OLS", "vRUV4",
+                       "SVA", "CATEnc", "CATErr", "SUCCOTASH")
+R> ... ... R> pi0hat_ash <- pi0hat_ash[, c(1:6, 8, 7, 9:11)]
+R> pi0hat_ash$`Sample Size` <- pi0hat_ash$`Sample Size` * 2
+R> longdat <- melt(pi0hat_ash,
+                id.vars = c("Seed", "Sample Size", "Proportion Null", "Number Controls"),
+                measure.vars = colnames(pi0hat_ash)[-(1:5)])
+... ... R> pdf(file = "./fig/ash_all.pdf", height = 6, width = 10)
+R> longdat_null <- longdat[longdat$`Proportion Null` == 1, ]
+R> ggplot(longdat_null, mapping = aes(x = variable, y = value, fill = variable)) +
+    geom_boxplot() +
+    facet_grid(.~ "Sample Size" + `Sample Size`) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1),
+          legend.position = "none",
+          text = element_text(size = 20)) +
+    xlab("Methods") +
+    ylab("Estimated Proportion Null") +
+    geom_hline(yintercept = 1, color = "red", lty = 2) +
+    geom_vline(xintercept = 7.5, color = "blue", lty = 2, alpha = 1/2)
+dev.off()
+pdf(file = "./fig/ash_all_nine.pdf", height = 6, width = 10)
+longdat_half <- longdat[longdat$`Proportion Null` == 0.9, ]
+ggplot(longdat_half, mapping = aes(x = variable, y = value, fill = variable)) +
+    geom_boxplot() +
+... ... ... ... ... ... ... ... ... ...     facet_grid(.~ "Sample Size" + `Sample Size`) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1),
+R>
+          legend.position = "none",
+          text = element_text(size = 20)) +
+    xlab("Methods") +
+    ylab("Estimated Proportion Null") +
+    geom_hline(yintercept = 0.9, color = "red", lty = 2) +
+    geom_vline(xintercept = 7.5, color = "blue", lty = 2, alpha = 1/2)
+dev.off()
+pdf(file = "./fig/ash_all_half.pdf", height = 6, width = 10)
+longdat_half <- longdat[longdat$`Proportion Null` == 0.5, ]
+ggplot(longdat_half, mapping = aes(x = variable, y = value, fill = variable)) +
+    geom_boxplot() +
+X11cairo
+       2
+R> R> R> ... ... ... ... ... ... ... ... ... ...     facet_grid(.~ "Sample Size" + `Sample Size`) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1),
+          legend.position = "none",
+          text = element_text(size = 20)) +
+    xlab("Methods") +
+    ylab("Estimated Proportion Null") +
+    geom_hline(yintercept = 0.5, color = "red", lty = 2) +
+    geom_vline(xintercept = 7.5, color = "blue", lty = 2, alpha = 1/2)
+dev.off()
+rm(list = ls())
+auc_ash <- read.csv("auc_ash.csv")
+names(auc_ash) <- c("Seed", "Sample Size", "Proportion Null",
+                       "Number Controls", "poisthin", "OLS", "vRUV4",
+R> X11cairo
+       2
+R> R> R> ... ... ... ... ... ... ... ... ... ...                        "SVA", "CATEnc", "CATErr", "SUCCOTASH")
+auc_ash <- auc_ash[, c(1:6, 8, 7, 9:11)]
+auc_ash$`Sample Size` <- auc_ash$`Sample Size` * 2
+R>
+X11cairo
+       2
+R> R> R> ... ... R> R> R> longdat <- melt(auc_ash,
+                id.vars = c("Seed", "Sample Size", "Proportion Null", "Number Controls"),
+                measure.vars = colnames(auc_ash)[-(1:5)])
+... ... R> pdf(file = "./fig/ash_all_nine_auc.pdf", height = 6, width = 10)
+R> longdat_half <- longdat[longdat$`Proportion Null` == 0.9, ]
+R> ggplot(longdat_half, mapping = aes(x = variable, y = value, fill = variable)) +
+    geom_boxplot() +
+    facet_grid(.~ "Sample Size" + `Sample Size`) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1),
+          legend.position = "none",
+          text = element_text(size = 20)) +
+    xlab("Methods") +
+    ylab("AUC")
+dev.off()
+pdf(file = "./fig/ash_all_half_auc.pdf", height = 6, width = 10)
+longdat_half <- longdat[longdat$`Proportion Null` == 0.5, ]
+ggplot(longdat_half, mapping = aes(x = variable, y = value, fill = variable)) +
+    geom_boxplot() +
+... ... ... ... ... ... ... ...     facet_grid(.~ "Sample Size" + `Sample Size`) +
+    theme_bw() +
+R>     theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1),
+          legend.position = "none",
+          text = element_text(size = 20)) +
+    xlab("Methods") +
+    ylab("AUC")
+dev.off()
+
+
+
+
+X11cairo
+       2
+R> R> R> ... ... ... ... ... ... ... ...
+
+R>
+X11cairo
+       2
+R> R> R> R> R> R> R> rm(list = ls())
+R> auc_ash <- read.csv("auc_ash.csv")
+R> names(auc_ash) <- c("Seed", "Sample Size", "Proportion Null",
+                       "Number Controls", "poisthin", "OLS", "vRUV4",
+                       "SVA", "CATEnc", "CATErr", "SUCCOTASH")
+... ... R> auc_ash <- auc_ash[, c(1:6, 8, 7, 9:11)]
+R> auc_ash$`Sample Size` <- auc_ash$`Sample Size` * 2
+R> longdat <- melt(auc_ash,
+                id.vars = c("Seed", "Sample Size", "Proportion Null", "Number Controls"),
+                measure.vars = colnames(auc_ash)[-(1:5)])
+... ... R> ?aggregate
+R> auc_ash
+    Seed Sample Size Proportion Null Number Controls poisthin    OLS    SVA
+1      1          20             0.5             100     TRUE 0.6250 0.7054
+2      2          20             0.5             100     TRUE 0.8599 0.8748
+3      3          20             0.5             100     TRUE 0.6154 0.7622
+4      4          20             0.5             100     TRUE 0.8361 0.8898
+5      5          20             0.5             100     TRUE 0.7810 0.7535
+6      6          20             0.5             100     TRUE 0.8112 0.8937
+7      7          20             0.5             100     TRUE 0.8264 0.8779
+8      8          20             0.5             100     TRUE 0.7222 0.7725
+9      9          20             0.5             100     TRUE 0.7906 0.8185
+10    10          20             0.5             100     TRUE 0.8503 0.8478
+11    11          20             0.5             100     TRUE 0.8695 0.8803
+12    12          20             0.5             100     TRUE 0.8164 0.8859
+13    13          20             0.5             100     TRUE 0.6059 0.8697
+14    14          20             0.5             100     TRUE 0.7119 0.7474
+15    15          20             0.5             100     TRUE 0.8229 0.8980
+16    16          20             0.5             100     TRUE 0.7842 0.8751
+17    17          20             0.5             100     TRUE 0.8443 0.8731
+18    18          20             0.5             100     TRUE 0.8004 0.8584
+19    19          20             0.5             100     TRUE 0.8159 0.8599
+20    20          20             0.5             100     TRUE 0.8142 0.8604
+21    21          20             0.5             100     TRUE 0.6909 0.7836
+22    22          20             0.5             100     TRUE 0.8325 0.8732
+23    23          20             0.5             100     TRUE 0.8529 0.8608
+24    24          20             0.5             100     TRUE 0.8506 0.8809
+25    25          20             0.5             100     TRUE 0.8625 0.8952
+26    26          20             0.5             100     TRUE 0.8125 0.8752
+27    27          20             0.5             100     TRUE 0.7806 0.8515
+28    28          20             0.5             100     TRUE 0.8585 0.8698
+29    29          20             0.5             100     TRUE 0.8714 0.9032
+30    30          20             0.5             100     TRUE 0.8792 0.8893
+31    31          20             0.5             100     TRUE 0.7816 0.8744
+32    32          20             0.5             100     TRUE 0.8545 0.8712
+33    33          20             0.5             100     TRUE 0.8399 0.8741
+34    34          20             0.5             100     TRUE 0.8491 0.8672
+35    35          20             0.5             100     TRUE 0.8536 0.8833
+36    36          20             0.5             100     TRUE 0.7958 0.8695
+37    37          20             0.5             100     TRUE 0.8088 0.8754
+38    38          20             0.5             100     TRUE 0.8294 0.9094
+39    39          20             0.5             100     TRUE 0.7622 0.8259
+40    40          20             0.5             100     TRUE 0.8477 0.8592
+41    41          20             0.5             100     TRUE 0.7918 0.8745
+42    42          20             0.5             100     TRUE 0.5703 0.7089
+43    43          20             0.5             100     TRUE 0.6171 0.7319
+44    44          20             0.5             100     TRUE 0.8260 0.8482
+45    45          20             0.5             100     TRUE 0.7317 0.8621
+46    46          20             0.5             100     TRUE 0.8700 0.8828
+47    47          20             0.5             100     TRUE 0.8555 0.8896
+48    48          20             0.5             100     TRUE 0.8302 0.8547
+49    49          20             0.5             100     TRUE 0.8632 0.8792
+50    50          20             0.5             100     TRUE 0.8054 0.8847
+51    51          20             0.5             100     TRUE 0.8328 0.8803
+52    52          20             0.5             100     TRUE 0.8373 0.8420
+53    53          20             0.5             100     TRUE 0.6498 0.7902
+54    54          20             0.5             100     TRUE 0.7698 0.8481
+55    55          20             0.5             100     TRUE 0.8480 0.8790
+56    56          20             0.5             100     TRUE 0.7518 0.8120
+57    57          20             0.5             100     TRUE 0.7831 0.8645
+58    58          20             0.5             100     TRUE 0.7571 0.8472
+59    59          20             0.5             100     TRUE 0.8637 0.8568
+60    60          20             0.5             100     TRUE 0.6673 0.7675
+61    61          20             0.5             100     TRUE 0.8534 0.8692
+62    62          20             0.5             100     TRUE 0.8673 0.9121
+63    63          20             0.5             100     TRUE 0.6719 0.8280
+64    64          20             0.5             100     TRUE 0.7912 0.9002
+65    65          20             0.5             100     TRUE 0.8493 0.8729
+66    66          20             0.5             100     TRUE 0.8352 0.8641
+67    67          20             0.5             100     TRUE 0.7904 0.8600
+68    68          20             0.5             100     TRUE 0.8409 0.8701
+69    69          20             0.5             100     TRUE 0.8543 0.9108
+70    70          20             0.5             100     TRUE 0.8181 0.8762
+71    71          20             0.5             100     TRUE 0.7424 0.8789
+72    72          20             0.5             100     TRUE 0.6410 0.8253
+73    73          20             0.5             100     TRUE 0.7343 0.8313
+74    74          20             0.5             100     TRUE 0.8087 0.8326
+75    75          20             0.5             100     TRUE 0.8688 0.8806
+76    76          20             0.5             100     TRUE 0.8432 0.8949
+77    77          20             0.5             100     TRUE 0.6737 0.7722
+78    78          20             0.5             100     TRUE 0.8533 0.8671
+79    79          20             0.5             100     TRUE 0.7890 0.8610
+80    80          20             0.5             100     TRUE 0.6995 0.8329
+81    81          20             0.5             100     TRUE 0.8393 0.8378
+82    82          20             0.5             100     TRUE 0.7707 0.8814
+83    83          20             0.5             100     TRUE 0.8193 0.8848
+84    84          20             0.5             100     TRUE 0.8487 0.8676
+85    85          20             0.5             100     TRUE 0.7472 0.8405
+86    86          20             0.5             100     TRUE 0.6051 0.7386
+87    87          20             0.5             100     TRUE 0.7792 0.8877
+88    88          20             0.5             100     TRUE 0.8214 0.8602
+89    89          20             0.5             100     TRUE 0.8695 0.8773
+90    90          20             0.5             100     TRUE 0.7202 0.8787
+     vRUV4 CATEnc CATErr SUCCOTASH
+1   0.8433 0.8610 0.8541    0.8508
+2   0.8776 0.8808 0.8821    0.8792
+3   0.8521 0.8492 0.8432    0.8537
+4   0.8857 0.8918 0.8932    0.8886
+5   0.8291 0.8337 0.8172    0.8335
+6   0.8996 0.8990 0.8962    0.8969
+7   0.8793 0.8836 0.8791    0.8802
+8   0.8374 0.8459 0.8194    0.8353
+9   0.8649 0.8652 0.8374    0.8590
+10  0.8879 0.8935 0.8625    0.8865
+11  0.8858 0.8967 0.8660    0.8901
+12  0.8843 0.8814 0.8819    0.8883
+13  0.8848 0.8833 0.8793    0.8844
+14  0.8646 0.8825 0.8261    0.8752
+15  0.8991 0.8964 0.8932    0.8987
+16  0.8974 0.9020 0.8718    0.8976
+17  0.8738 0.8923 0.8889    0.8712
+18  0.8801 0.8871 0.8693    0.8814
+19  0.8631 0.8593 0.8448    0.8607
+20  0.8674 0.8659 0.8609    0.8630
+21  0.8420 0.8500 0.7987    0.8373
+22  0.8817 0.8850 0.8718    0.8829
+23  0.8714 0.8891 0.8821    0.8706
+24  0.8829 0.8872 0.8770    0.8839
+25  0.8943 0.8965 0.8953    0.8980
+26  0.8754 0.8823 0.8407    0.8758
+27  0.8743 0.8325 0.8149    0.8750
+28  0.8693 0.8703 0.8619    0.8742
+29  0.9023 0.8959 0.8942    0.8970
+30  0.8924 0.8871 0.8890    0.8929
+31  0.8777 0.8688 0.8647    0.8760
+32  0.8721 0.8728 0.8688    0.8741
+33  0.8782 0.8745 0.8718    0.8750
+34  0.8686 0.8761 0.8709    0.8715
+35  0.8842 0.8895 0.8866    0.8867
+36  0.8685 0.8667 0.8621    0.8719
+37  0.8779 0.8732 0.8723    0.8776
+38  0.9166 0.9130 0.9070    0.9171
+39  0.8418 0.8524 0.8422    0.8423
+40  0.8731 0.8647 0.8420    0.8748
+41  0.8753 0.8790 0.8664    0.8755
+42  0.8296 0.8383 0.8317    0.8372
+43  0.8415 0.8407 0.8333    0.8437
+44  0.8503 0.8508 0.8395    0.8507
+45  0.8699 0.8668 0.8525    0.8759
+46  0.8882 0.8842 0.8605    0.8893
+47  0.8949 0.8881 0.8867    0.8966
+48  0.8513 0.8587 0.8337    0.8522
+49  0.8807 0.8815 0.8715    0.8816
+50  0.8890 0.9012 0.8936    0.8897
+51  0.8822 0.8912 0.8693    0.8870
+52  0.8558 0.8410 0.8101    0.8523
+53  0.9169 0.9198 0.9166    0.9142
+54  0.8640 0.8715 0.8543    0.8612
+55  0.8744 0.8795 0.8694    0.8744
+56  0.8526 0.8435 0.8314    0.8562
+57  0.8648 0.8724 0.8653    0.8656
+58  0.8541 0.8741 0.8744    0.8581
+59  0.8753 0.8757 0.8533    0.8753
+60  0.8333 0.8325 0.8246    0.8333
+61  0.8667 0.8643 0.8634    0.8710
+62  0.9180 0.9191 0.9082    0.9187
+63  0.8771 0.8885 0.8838    0.8793
+64  0.8987 0.8783 0.8399    0.9018
+65  0.8887 0.8963 0.8702    0.8904
+66  0.8809 0.8923 0.8777    0.8816
+67  0.8707 0.8579 0.8421    0.8698
+68  0.8718 0.8806 0.8737    0.8680
+69  0.9149 0.9161 0.9134    0.9099
+70  0.8821 0.8787 0.8732    0.8821
+71  0.8855 0.8785 0.8650    0.8829
+72  0.8557 0.8519 0.8419    0.8581
+73  0.8803 0.8674 0.8706    0.8808
+74  0.8403 0.8291 0.8127    0.8395
+75  0.8890 0.8742 0.8573    0.8916
+76  0.8910 0.9005 0.8996    0.8906
+77  0.8552 0.8520 0.8371    0.8582
+78  0.8684 0.8670 0.8613    0.8656
+79  0.8558 0.8552 0.8567    0.8530
+80  0.8433 0.8484 0.8433    0.8474
+81  0.8422 0.8328 0.8343    0.8419
+82  0.9004 0.8967 0.8854    0.8999
+83  0.8904 0.8921 0.8872    0.8884
+84  0.8712 0.8675 0.8567    0.8665
+85  0.8745 0.8771 0.8448    0.8799
+86  0.8552 0.8612 0.8148    0.8569
+87  0.9060 0.9092 0.8926    0.9077
+88  0.8640 0.8421 0.8426    0.8628
+89  0.8710 0.8852 0.8690    0.8759
+90  0.8836 0.8792 0.8713    0.8801
+ [ reached getOption("max.print") -- omitted 510 rows ]
+R> head(auc_ash)
+  Seed Sample Size Proportion Null Number Controls poisthin    OLS    SVA
+1    1          20             0.5             100     TRUE 0.6250 0.7054
+2    2          20             0.5             100     TRUE 0.8599 0.8748
+3    3          20             0.5             100     TRUE 0.6154 0.7622
+4    4          20             0.5             100     TRUE 0.8361 0.8898
+5    5          20             0.5             100     TRUE 0.7810 0.7535
+6    6          20             0.5             100     TRUE 0.8112 0.8937
+   vRUV4 CATEnc CATErr SUCCOTASH
+1 0.8433 0.8610 0.8541    0.8508
+2 0.8776 0.8808 0.8821    0.8792
+3 0.8521 0.8492 0.8432    0.8537
+4 0.8857 0.8918 0.8932    0.8886
+5 0.8291 0.8337 0.8172    0.8335
+6 0.8996 0.8990 0.8962    0.8969
+R> aggregate(auc_ash, auc_ash[, -(1:5)] ~ `Proportion Null` + `Sample Size`, FUN = median)
+Error in aggregate.data.frame(auc_ash, auc_ash[, -(1:5)] ~ `Proportion Null` +  :
+  'by' must be a list
+R> aggregate(auc_ash, names(auc_ash)[-(1:5)] ~ `Proportion Null` + `Sample Size`, FUN = median)
+Error in aggregate.data.frame(auc_ash, names(auc_ash)[-(1:5)] ~ `Proportion Null` +  :
+  'by' must be a list
+R> names(auc_ash)[-(1:5)]
+[1] "OLS"       "SVA"       "vRUV4"     "CATEnc"    "CATErr"    "SUCCOTASH"
+R> aggregate(auc_ash, cbind(names(auc_ash)[-(1:5)]) ~ `Proportion Null` + `Sample Size`, FUN = median)
+Error in aggregate.data.frame(auc_ash, cbind(names(auc_ash)[-(1:5)]) ~  :
+  'by' must be a list
+R> aggregate(data = auc_ash, cbind(names(auc_ash)[-(1:5)]) ~ `Proportion Null` + `Sample Size`, FUN = median)
+Error in model.frame.default(formula = cbind(names(auc_ash)[-(1:5)]) ~  :
+  variable lengths differ (found for 'Proportion Null')
+R> aggregate(data = auc_ash, auc_ash[, -(1:5)] ~ `Proportion Null` + `Sample Size`, FUN = median)
+Error in model.frame.default(formula = auc_ash[, -(1:5)] ~ `Proportion Null` +  :
+  invalid type (list) for variable 'auc_ash[, -(1:5)]'
+R> ?dcast
+R> names(longdat)
+[1] "Seed"            "Sample Size"     "Proportion Null" "Number Controls"
+[5] "variable"        "value"
+R> aggregate(value ~ variable + `Sample Size` + `Proportion Null`, data = longdat, FUN = median)
+    variable Sample Size Proportion Null  value
+1        OLS          20             0.5 0.8151
+2        SVA          20             0.5 0.8675
+3      vRUV4          20             0.5 0.8747
+4     CATEnc          20             0.5 0.8777
+5     CATErr          20             0.5 0.8656
+6  SUCCOTASH          20             0.5 0.8754
+7        OLS          40             0.5 0.8667
+8        SVA          40             0.5 0.9146
+9      vRUV4          40             0.5 0.9233
+10    CATEnc          40             0.5 0.9242
+11    CATErr          40             0.5 0.9126
+12 SUCCOTASH          40             0.5 0.9228
+13       OLS          20             0.9 0.8136
+14       SVA          20             0.9 0.8656
+15     vRUV4          20             0.9 0.8716
+16    CATEnc          20             0.9 0.8720
+17    CATErr          20             0.9 0.8597
+18 SUCCOTASH          20             0.9 0.8729
+19       OLS          40             0.9 0.8657
+20       SVA          40             0.9 0.9162
+21     vRUV4          40             0.9 0.9199
+22    CATEnc          40             0.9 0.9257
+23    CATErr          40             0.9 0.9149
+24 SUCCOTASH          40             0.9 0.9207
+R> dummydat[dummydat$`Proportion Null` == 0.5]
+Error: object 'dummydat' not found
+R> dummydat <- aggregate(value ~ variable + `Sample Size` + `Proportion Null`, data = longdat, FUN = median)
+R> dummydat[dummydat$`Proportion Null` == 0.5]
+Error in `[.data.frame`(dummydat, dummydat$`Proportion Null` == 0.5) :
+  undefined columns selected
+R> dummydat[, dummydat$`Proportion Null` == 0.5]
+Error in `[.data.frame`(dummydat, , dummydat$`Proportion Null` == 0.5) :
+  undefined columns selected
+R> dummydat[dummydat$`Proportion Null` == 0.5, ]
+    variable Sample Size Proportion Null  value
+1        OLS          20             0.5 0.8151
+2        SVA          20             0.5 0.8675
+3      vRUV4          20             0.5 0.8747
+4     CATEnc          20             0.5 0.8777
+5     CATErr          20             0.5 0.8656
+6  SUCCOTASH          20             0.5 0.8754
+7        OLS          40             0.5 0.8667
+8        SVA          40             0.5 0.9146
+9      vRUV4          40             0.5 0.9233
+10    CATEnc          40             0.5 0.9242
+11    CATErr          40             0.5 0.9126
+12 SUCCOTASH          40             0.5 0.9228
+R> aggregate(data = dummydat[dummydat$`Proportion Null` == 0.5, ], value ~ `Sample Size`, FUN = max)
+  Sample Size  value
+1          20 0.8777
+2          40 0.9242
+R> dummydat <- aggregate(value ~ variable + `Sample Size` + `Proportion Null`,
+                      data = longdat, FUN = median)
+... R> dummydat_temp <- aggregate(data = dummydat[dummydat$`Proportion Null` == 0.5, ],
+                           value ~ `Sample Size`, FUN = max)
+... R> dummydat_temp <- aggregate(data = dummydat[dummydat$`Proportion Null` == 0.5, ],
+                           value ~ `Sample Size`, FUN = max)
+... R> longdat_half <- longdat[longdat$`Proportion Null` == 0.9, ]
+R> ggplot(longdat_half, mapping = aes(x = variable, y = value, fill = variable)) +
+    geom_boxplot() +
+    facet_grid(.~ "Sample Size" + `Sample Size`) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1),
+... ... ... ... ...           legend.position = "none",
+          text = element_text(size = 20)) +
+    xlab("Methods") +
+    ylab("AUC") +
+    geom_hline(data = dummydat_temp, mapping = aes(yintercept = value))
+... ... ... ... R> ggplot(longdat_half, mapping = aes(x = variable, y = value, fill = variable)) +
+...     geom_boxplot() +
+    facet_grid(.~ "Sample Size" + `Sample Size`) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1),
+          legend.position = "none",
+          text = element_text(size = 20)) +
+    xlab("Methods") +
+    ylab("AUC") +
+... ... ... ... ... ... ... ...     geom_hline(data = dummydat_temp, mapping = aes(yintercept = value), col = 2, lty = 2)
+R> dummydat_temp <- aggregate(data = dummydat[dummydat$`Proportion Null` == 0.9, ],
+...                            value ~ `Sample Size`, FUN = max)
+R> longdat_half <- longdat[longdat$`Proportion Null` == 0.9, ]
+R> ggplot(longdat_half, mapping = aes(x = variable, y = value, fill = variable)) +
+    geom_boxplot() +
+    facet_grid(.~ "Sample Size" + `Sample Size`) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1),
+          legend.position = "none",
+          text = element_text(size = 20)) +
+    xlab("Methods") +
+    ylab("AUC") +
+... ... ... ... ... ... ... ... ...     geom_hline(data = dummydat_temp, mapping = aes(yintercept = value), col = 2, lty = 2)
+R> dummydat_temp <- aggregate(data = dummydat[dummydat$`Proportion Null` == 0.9, ],
+...                            value ~ `Sample Size`, FUN = max)
+R> longdat_half <- longdat[longdat$`Proportion Null` == 0.5, ]
+R> ggplot(longdat_half, mapping = aes(x = variable, y = value, fill = variable)) +
+    geom_boxplot() +
+    facet_grid(.~ "Sample Size" + `Sample Size`) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1),
+          legend.position = "none",
+          text = element_text(size = 20)) +
+    xlab("Methods") +
+... ... ... ... ... ... ... ...     ylab("AUC") +
+    geom_hline(data = dummydat_temp, mapping = aes(yintercept = value), col = 2, lty = 2)
+... R> dummydat_temp <- aggregate(data = dummydat[dummydat$`Proportion Null` == 0.5, ],
+...                            value ~ `Sample Size`, FUN = max)
+R> longdat_half <- longdat[longdat$`Proportion Null` == 0.5, ]
+R> ggplot(longdat_half, mapping = aes(x = variable, y = value, fill = variable)) +
+    geom_boxplot() +
+    facet_grid(.~ "Sample Size" + `Sample Size`) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1),
+          legend.position = "none",
+          text = element_text(size = 20)) +
+    xlab("Methods") +
+    ylab("AUC") +
+    geom_hline(data = dummydat_temp, mapping = aes(yintercept = value), col = 2, lty = 2)
+... ... ... ... ... ... ... ... ... R> library(ggplot2)
+R> library(reshape2)
+R> rm(list = ls())
+R> library(ggplot2)
+R> library(reshape2)
+pi0hat_ash <- read.csv("pi0hat_ash.csv")
+names(pi0hat_ash) <- c("Seed", "Sample Size", "Proportion Null",
+                       "Number Controls", "poisthin", "OLS", "vRUV4",
+                       "SVA", "CATEnc", "CATErr", "SUCCOTASH")
+R> R> ... ... R> pi0hat_ash <- pi0hat_ash[, c(1:6, 8, 7, 9:11)]
+R> pi0hat_ash$`Sample Size` <- pi0hat_ash$`Sample Size` * 2
+R> longdat <- melt(pi0hat_ash,
+                id.vars = c("Seed", "Sample Size", "Proportion Null", "Number Controls"),
+                measure.vars = colnames(pi0hat_ash)[-(1:5)])
+... ... R> pdf(file = "./fig/ash_all.pdf", height = 6, width = 10)
+R> longdat_null <- longdat[longdat$`Proportion Null` == 1, ]
+R> ggplot(longdat_null, mapping = aes(x = variable, y = value, fill = variable)) +
+    geom_boxplot() +
+    facet_grid(.~ "Sample Size" + `Sample Size`) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1),
+          legend.position = "none",
+          text = element_text(size = 20)) +
+    xlab("Methods") +
+    ylab("Estimated Proportion Null") +
+    geom_hline(yintercept = 1, color = "red", lty = 2) +
+    geom_vline(xintercept = 7.5, color = "blue", lty = 2, alpha = 1/2)
+dev.off()
+pdf(file = "./fig/ash_all_nine.pdf", height = 6, width = 10)
+longdat_half <- longdat[longdat$`Proportion Null` == 0.9, ]
+ggplot(longdat_half, mapping = aes(x = variable, y = value, fill = variable)) +
+    geom_boxplot() +
+... ... ... ... ... ... ... ... ... ...     facet_grid(.~ "Sample Size" + `Sample Size`) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1),
+R>           legend.position = "none",
+          text = element_text(size = 20)) +
+    xlab("Methods") +
+    ylab("Estimated Proportion Null") +
+    geom_hline(yintercept = 0.9, color = "red", lty = 2) +
+    geom_vline(xintercept = 7.5, color = "blue", lty = 2, alpha = 1/2)
+dev.off()
+pdf(file = "./fig/ash_all_half.pdf", height = 6, width = 10)
+longdat_half <- longdat[longdat$`Proportion Null` == 0.5, ]
+ggplot(longdat_half, mapping = aes(x = variable, y = value, fill = variable)) +
+    geom_boxplot() +
+X11cairo
+       2
+R> R> R> ... ... ... ... ... ... ... ... ... ...     facet_grid(.~ "Sample Size" + `Sample Size`) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1),
+          legend.position = "none",
+          text = element_text(size = 20)) +
+    xlab("Methods") +
+    ylab("Estimated Proportion Null") +
+    geom_hline(yintercept = 0.5, color = "red", lty = 2) +
+    geom_vline(xintercept = 7.5, color = "blue", lty = 2, alpha = 1/2)
+dev.off()
+rm(list = ls())
+auc_ash <- read.csv("auc_ash.csv")
+names(auc_ash) <- c("Seed", "Sample Size", "Proportion Null",
+                       "Number Controls", "poisthin", "OLS", "vRUV4",
+R> X11cairo
+       2
+R> R> R> ... ... ... ... ... ... ... ... ... ...                        "SVA", "CATEnc", "CATErr", "SUCCOTASH")
+auc_ash <- auc_ash[, c(1:6, 8, 7, 9:11)]
+auc_ash$`Sample Size` <- auc_ash$`Sample Size` * 2
+R> longdat <- melt(auc_ash,
+                id.vars = c("Seed", "Sample Size", "Proportion Null", "Number Controls"),
+                measure.vars = colnames(auc_ash)[-(1:5)])
+X11cairo
+       2
+R> R> R> ... ... R> R> R> ... ... R> dummydat <- aggregate(value ~ variable + `Sample Size` + `Proportion Null`,
+                      data = longdat, FUN = median)
+... R> pdf(file = "./fig/ash_all_nine_auc.pdf", height = 6, width = 10)
+R> dummydat_temp <- aggregate(data = dummydat[dummydat$`Proportion Null` == 0.9, ],
+                           value ~ `Sample Size`, FUN = max)
+... R> longdat_half <- longdat[longdat$`Proportion Null` == 0.9, ]
+R> ggplot(longdat_half, mapping = aes(x = variable, y = value, fill = variable)) +
+    geom_boxplot() +
+    facet_grid(.~ "Sample Size" + `Sample Size`) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1),
+          legend.position = "none",
+          text = element_text(size = 20)) +
+    xlab("Methods") +
+    ylab("AUC") +
+    geom_hline(data = dummydat_temp, mapping = aes(yintercept = value), col = 2, lty = 2)
+dev.off()
+... ... ... ... ... ... ... ... ... R>
+X11cairo
+       2
+R> pdf(file = "./fig/ash_all_half_auc.pdf", height = 6, width = 10)
+R> dummydat_temp <- aggregate(data = dummydat[dummydat$`Proportion Null` == 0.5, ],
+...                            value ~ `Sample Size`, FUN = max)
+R> longdat_half <- longdat[longdat$`Proportion Null` == 0.5, ]
+R> ggplot(longdat_half, mapping = aes(x = variable, y = value, fill = variable)) +
+    geom_boxplot() +
+    facet_grid(.~ "Sample Size" + `Sample Size`) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1),
+          legend.position = "none",
+          text = element_text(size = 20)) +
+    xlab("Methods") +
+    ylab("AUC") +
+    geom_hline(data = dummydat_temp, mapping = aes(yintercept = value), col = 2, lty = 2)
+... ... ... ... ... ... ... ... ... dev.off()
+R>
+X11cairo
+       2
+R>

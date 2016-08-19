@@ -372,3 +372,70 @@ rmixnorm <- function (pi_vals, mu_seq, tau_seq, p)
     }
     return(beta)
 }
+
+
+
+datamaker_theo <- function(Ngene, Nsamp, nullpi, ncontrols,
+                           alpha_sd = 1, sigsd = 1, num_sv = 5) {
+    Ntrt <- round(Nsamp / 2)
+    ## X <- cbind(rep(1, length = Nsamp), c(rep(1, Ntrt), rep(0, Nsamp - Ntrt)))
+    X <- matrix(rnorm(2 * Nsamp), nrow = Nsamp)
+    ## Z <- matrix(NA, nrow = Nsamp, ncol = num_sv)
+    ## for(index in 1:num_sv) {
+    ##     Z[, index] <- sample(c(0, 1), size = Nsamp, replace = TRUE, prob = c(1/2, 1/2))
+    ## }
+    Z <- matrix(rnorm(num_sv * Nsamp), nrow = Nsamp)
+    alpha <- matrix(rnorm(num_sv * Ngene, sd = alpha_sd), nrow = num_sv, ncol = Ngene)
+    beta <- matrix(rnorm(2 * Ngene), nrow = 2, ncol = Ngene)
+
+    which_null <- rep(FALSE, length = Ngene)
+    which_null[sample(1:Ngene, round(nullpi * Ngene))] <- TRUE
+    beta[2, which_null] <- 0
+
+    E <- matrix(rnorm(Ngene * Nsamp, sd = sigsd), nrow = Nsamp)
+
+    Y <- X %*% beta + Z %*% alpha + E
+
+    retlist <- list()
+    retlist$Y <- round(2 ^ Y * 256)
+    retlist$X <- X
+    retlist$beta <- beta
+    retlist$Z <- Z
+    retlist$alpha <- alpha
+    retlist$E <- E
+    retlist$which_null <- which_null
+    return(retlist)
+}
+
+
+datamaker_change_ncovs <- function(Ngene, Nsamp, nullpi, ncontrols, ncovs,
+                                   alpha_sd = 1, sigsd = 1, num_sv = 5) {
+    Ntrt <- round(Nsamp / 2)
+    ## X <- cbind(rep(1, length = Nsamp), c(rep(1, Ntrt), rep(0, Nsamp - Ntrt)))
+    X <- matrix(rnorm(ncovs * Nsamp), nrow = Nsamp)
+    ## Z <- matrix(NA, nrow = Nsamp, ncol = num_sv)
+    ## for(index in 1:num_sv) {
+    ##     Z[, index] <- sample(c(0, 1), size = Nsamp, replace = TRUE, prob = c(1/2, 1/2))
+    ## }
+    Z <- matrix(rnorm(num_sv * Nsamp), nrow = Nsamp)
+    alpha <- matrix(rnorm(num_sv * Ngene, sd = alpha_sd), nrow = num_sv, ncol = Ngene)
+    beta <- matrix(rnorm(2 * Ngene), nrow = ncovs, ncol = Ngene)
+
+    which_null <- rep(FALSE, length = Ngene)
+    which_null[sample(1:Ngene, round(nullpi * Ngene))] <- TRUE
+    beta[, which_null] <- 0
+
+    E <- matrix(rnorm(Ngene * Nsamp, sd = sigsd), nrow = Nsamp)
+
+    Y <- X %*% beta + Z %*% alpha + E
+
+    retlist <- list()
+    retlist$Y <- round(2 ^ Y * 256)
+    retlist$X <- X
+    retlist$beta <- beta
+    retlist$Z <- Z
+    retlist$alpha <- alpha
+    retlist$E <- E
+    retlist$which_null <- which_null
+    return(retlist)
+}
