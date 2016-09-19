@@ -1,0 +1,85 @@
+library(ggplot2)
+tissue_vec <- c("adiposetissue", "bladder", "bloodvessel", "breast",
+                "colon", "kidney", "lung", "nerve", "pancreas",
+                "skin", "spleen", "adrenalgland", "blood", "brain",
+                "esophagus", "heart", "liver", "muscle", "pituitary",
+                "salivarygland", "smallintestine", "stomach", "thyroid")
+
+num_sv_vec <- rep(NA, length = length(tissue_vec))
+for (tissue_index in 1:length(tissue_vec)) {
+    current_tissue <- tissue_vec[tissue_index]
+    ## large dat ------------------------------------------------------------------
+    dat <- readRDS(paste0("./output/cleaned_gtex_data/", current_tissue, ".Rds"))
+    onsex <- dat$chrom == "X" | dat$chrom == "Y"
+    dat$ctl[onsex] <- FALSE
+
+    q75 <- apply(X = dat$Y, MARGIN = 2, FUN = quantile, probs = 0.75)
+    X <- cbind(dat$X, q75)
+
+    num_sv <- sva::num.sv(dat = dat$Y, mod = dat$X)
+    num_sv_vec[tissue_index] <- num_sv
+    cat(num_sv, "\n")
+    ruvbout <- vicar::ruvb(Y = t(dat$Y), X = X, ctl = dat$ctl, k = num_sv,
+                           cov_of_interest = 2, include_intercept = FALSE,
+                           fa_func = vicar::bfa_gs_linked, return_mcmc = TRUE,
+                           fa_args = list(use_code = "r", nsamp = 20000, thin = 20))
+    saveRDS(object = ruvbout, file = paste0("./output/ruvbout_q75/ruvbout_",
+                                            current_tissue, ".Rds"))
+}
+
+saveRDS(object = num_sv_vec, file = "./output/ruvbout_q75/num_sv.Rds")
+
+
+## parallellized version ------------------------------------------------------------
+library(ggplot2)
+
+tissue_vec <- c("adiposetissue", "bladder", "bloodvessel", "breast",
+                "colon", "kidney", "lung", "nerve", "pancreas",
+                "skin", "spleen", "adrenalgland", "blood", "brain",
+                "esophagus", "heart", "liver", "muscle", "pituitary",
+                "salivarygland", "smallintestine", "stomach", "thyroid")
+
+num_sv_vec <- rep(NA, length = length(tissue_vec))
+for (tissue_index in 1:length(tissue_vec)) {
+    current_tissue <- tissue_vec[tissue_index]
+    ## large dat ------------------------------------------------------------------
+    dat <- readRDS(paste0("./output/cleaned_gtex_data/", current_tissue, ".Rds"))
+    onsex <- dat$chrom == "X" | dat$chrom == "Y"
+    dat$ctl[onsex] <- FALSE
+
+    q75 <- apply(X = dat$Y, MARGIN = 2, FUN = quantile, probs = 0.75)
+    X <- cbind(dat$X, q75)
+
+    num_sv <- sva::num.sv(dat = dat$Y, mod = dat$X)
+    num_sv_vec[tissue_index] <- num_sv
+    cat(num_sv, "\n")
+
+}
+saveRDS(object = num_sv_vec, file = "./output/ruvbout_q75/num_sv.Rds")
+
+num_sv_vec <- readRDS(file = "./output/ruvbout_q75/num_sv.Rds")
+
+args_list <- list()
+for (index in 1:length(tissue_vec)) {
+    args_list[[index]] <- list(current_tissue = tissue_vec[index], num_sv = num_sv_vec[index])
+}
+
+fit_b <- function(args) {
+    num_sv <- args$num_sv
+    current_tissue <- args$current_tissue
+    dat <- readRDS(paste0("./output/cleaned_gtex_data/", current_tissue, ".Rds"))
+    onsex <- dat$chrom == "X" | dat$chrom == "Y"
+    dat$ctl[onsex] <- FALSE
+
+    q75 <- apply(X = dat$Y, MARGIN = 2, FUN = quantile, probs = 0.75)
+    X <- cbind(dat$X, q75)
+    ruvbout <- vicar::ruvb(Y = t(dat$Y), X = X, ctl = dat$ctl, k = num_sv,
+                           cov_of_interest = 2, include_intercept = FALSE,
+                           fa_func = vicar::bfa_gs_linked, return_mcmc = TRUE,
+                           fa_args = list(use_code = "r", nsamp = 20000, thin = 20))
+    saveRDS(object = ruvbout, file = paste0("./output/ruvbout_q75/ruvbout_",
+                                            current_tissue, ".Rds"))
+}
+
+library(parallel)
+mcout <- mclapply(X = args_list, FUN = fit_b, mc.cores = 6)

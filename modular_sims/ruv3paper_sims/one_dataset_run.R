@@ -8,6 +8,7 @@ source("../code/evaluations.R")
 
 "#52EF87"
 fill_color <- "grey90"
+fill_color <- "white"
 seed_seq <- 117:119
 for (index in 1:length(seed_seq)) {
     current_seed <- seed_seq[index]
@@ -31,7 +32,7 @@ for (index in 1:length(seed_seq)) {
 pdf(file = "all_null.pdf", height = 2, width = 6, family = "Times", colormodel = "cmyk")
 longdat <- melt(pmat[pmat$seed == seed_seq[1], ], id.vars = "seed")
 p1 <- ggplot(data = longdat, mapping = aes(x = value, color = I("black"), fill = I(fill_color))) +
-    geom_histogram(bins = 20) +
+    geom_histogram(bins = 15) +
     ylab("Counts") +
     xlab("P-values") +
     theme_bw() +
@@ -40,7 +41,7 @@ p1 <- ggplot(data = longdat, mapping = aes(x = value, color = I("black"), fill =
 
 longdat <- melt(pmat[pmat$seed == seed_seq[2], ], id.vars = "seed")
 p2 <- ggplot(data = longdat, mapping = aes(x = value, color = I("black"), fill = I(fill_color))) +
-    geom_histogram(bins = 20) +
+    geom_histogram(bins = 15) +
     ylab("") +
     xlab("P-values") +
     theme_bw() +
@@ -49,7 +50,7 @@ p2 <- ggplot(data = longdat, mapping = aes(x = value, color = I("black"), fill =
 
 longdat <- melt(pmat[pmat$seed == seed_seq[3], ], id.vars = "seed")
 p3 <- ggplot(data = longdat, mapping = aes(x = value, color = I("black"), fill = I(fill_color))) +
-    geom_histogram(bins = 20) +
+    geom_histogram(bins = 15) +
     ylab("") +
     xlab("P-values") +
     theme_bw() +

@@ -1,0 +1,108 @@
+---
+title: "Check if Posterior is Approximately Multivariate Normal"
+author: "David Gerard"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_document
+---
+
+## Introduction
+
+Here, I look to see if normality is a good approximation. Also, I'm
+going to see if the individual $\beta$'s can be assumed to be
+independent.
+
+Both of these conditions occur asymptotically in CATE, so it would
+make sense if this asymptotic behavior also holds for RUVB. But what
+about a finite number of samples?
+
+In this write-up, I find that the tails are a little too big to be
+normal when the sample size is small. The normality assumption looks
+great for larger sample sizes. The independence assumption seems
+reasonable.
+
+## Bladder Data
+
+```{r}
+library(ggplot2)
+bladder <- readRDS(file = "./output/ruvbout_q75/ruvbout_bladder.Rds")
+beta    <- bladder$betahat_post[1,,]
+```
+
+I read in the RUVB output when using the GTEx bladder data using
+gender as the covariate of interest. I included an intercept term and
+the 75th percentile of the $\log_2$ counts as nuisance covariates. I
+am choosing to focus on the bladder data because with n = 11, it has
+the smallest sample size of the tissues in the GTEx data.
+
+## Look at correlations
+
+For the `r nrow(beta)` by `r nrow(beta)` correlation matrix of the
+$\beta$'s, the maximum correlation observed is 0.1, and the
+correlation is unimodal about 0.
+
+```{r}
+cb <- cor(t(beta[sample(1:nrow(beta), size = 1000), ]))
+qplot(cb[lower.tri(cb)], bins = 30)
+```
+
+But if we have independent normals, we would expect to see some
+heterogeneity between the correlations. Let's look at a histogram from
+theoretically independent normals.
+
+```{r}
+temp <- matrix(rnorm(1000 ^ 2), nrow = 1000, ncol = 1000)
+ct <- cor(temp)
+qplot(ct[lower.tri(ct)], bins = 30)
+```
+
+It looks the exact same. A qqplot of the correlations we get
+
+```{r}
+temp <- data.frame(sample = sort(cb[lower.tri(cb)]), theoretical = sort(ct[lower.tri(ct)]))
+ggplot(data = temp, mapping = aes(x = theoretical, y = sample)) + geom_point() +
+    geom_smooth(method = "lm", lty = 2)
+```
+
+
+## Look at tail behavior
+
+The tails in the bladder data are always a little too big. Here are some univariate qqplots:
+
+```{r}
+plot_random_qq <- function(beta, seed) {
+    set.seed(seed)
+    temp <- data.frame(sample = beta[sample(1:nrow(beta), 1), ])
+    temp$theoretical <- qnorm(seq(1 / nrow(temp), 1 - 1 / nrow(temp),
+                           length = nrow(temp)))[rank(temp$sample)]
+    pl <- ggplot(data = temp, mapping = aes(x = theoretical, y = sample)) + geom_point() +
+        geom_smooth(method = "lm", lty = 2)
+    print(pl)
+}
+for (index in 1:10 + 301) {
+    plot_random_qq(beta, index)
+}
+```
+
+Here are some random scatterplots
+
+```{r, eval = FALSE, echo = FALSE}
+plot_random_scatter <- function(beta, seed) {
+    set.seed(seed)
+    temp <- data.frame(b1 = beta[sample(1:nrow(beta), 1), ], b2 = beta[sample(1:nrow(beta), 1), ])
+    pl <- ggplot(data = temp, mapping = aes(x = b1, y = b2)) + geom_point()
+    print(pl)
+}
+for (index in 1:10 + 5000) {
+    plot_random_scatter(beta, index)
+}
+```
+
+## Muscle Data
+The muscle data has a much larger sample size (n = 430). The qqplots look great.
+```{r}
+muscle <- readRDS(file = "./output/ruvbout_q75/ruvbout_muscle.Rds")
+beta   <- muscle$betahat_post[1,,]
+for (index in 1:10 + 5325) {
+    plot_random_qq(beta, index)
+}
+```

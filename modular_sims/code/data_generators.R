@@ -50,6 +50,8 @@ rep_pois_thin <- function(nsim, Nsamp, nullpi, path, tissue = "muscle",
 }
 
 
+
+
 datamaker_counts_only <- function(args) {
     dfargs <- default_datamaker_args(args)
 
@@ -141,7 +143,7 @@ datamaker_counts_only <- function(args) {
 
 
     input <- list(counts = counts, condition = condition)
-    meta <- list(null = null, true_log2foldchange = true_log2foldchange, dfargs = dfargs)
+    meta <- list(null = null, true_log2foldchange = true_log2foldchange, dfargs = dfargs, subsample = subsample)
 
     return(list(meta = meta,input = input))
 }

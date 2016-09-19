@@ -1,0 +1,265 @@
+---
+title: "Compare normalization methods in simulations"
+author: "David Gerard"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_document
+---
+
+# Abstract
+
+I ran some simulations where I used the entire library to calculate
+the 75th quantile of log-counts which I then included as a
+covariate. RUVB did very poorly in these simulations, so I spent the
+morning playing with the different approaches that I've done. I have a
+simulation setting where there is no adjustment, a simulation setting
+where I included the 75th percentile of the log-counts as a covariate
+after the subsampling genes and the Poisson thinning, and one where I
+included the 75th percentile of the log-counts a covariate prior to
+subsampling the genes and prior to the Poisson thinning.
+
+My general conclusions are (1) using the whole library makes things
+worse, (2) including the extra covariate from just the subsampled
+genes makes things worse for smaller sample sizes and better for
+larger sample sizes.
+
+Another intersting thing is that the OLS method gets the greatest
+amount of improvement. This makes sense as the 75th percentile of the
+log-counts is an unobserved confounder, so all of the other methods
+are already trying to adjust for it.
+
+My performance metrics are AUC and MSE.
+
+# Introduction
+
+All of the methods in this paper follow the Poisson thinning approach
+that I've been using. The simulations are all under the same
+conditions. RUVB always uses the linked FA with parameter expansion.
+
+# Look at AUC
+
+Read in AUC from simulation results.
+```{r}
+library(ggplot2)
+library(reshape2)
+library(dplyr)
+aucmat_noadjust <- read.csv("../ruv3paper_sims_px_linked_v6p/auc_mat2.csv")
+aucmat_75       <- read.csv("../ruv3paper_sims_px_linked_v6p_75th/auc_mat2.csv")
+aucmat_whole75  <- read.csv("../ruv3paper_sims_px_linked_v6p_library/auc_mat2.csv")
+
+aucmat_75 <- select(aucmat_75, -ruv4v)
+aucmat_whole75 <- select(aucmat_whole75, -ruv4v)
+
+
+longdat_noadjust <- melt(aucmat_noadjust, id.vars = colnames(aucmat_noadjust)[1:5])
+longdat_75 <- melt(aucmat_75, id.vars = colnames(aucmat_75)[1:5])
+longdat_whole75 <- melt(aucmat_whole75, id.vars = colnames(aucmat_whole75)[1:5])
+```
+
+Calculate mean AUC and the AUC sd under every scenario.
+```{r}
+m_na <- aggregate(value ~ nullpi + Nsamp + ncontrols + variable,
+                  data = longdat_noadjust, FUN = "mean")
+m_na$sd <- aggregate(value ~ nullpi + Nsamp + ncontrols + variable,
+                  data = longdat_noadjust, FUN = "sd")$value
+
+m_75 <- aggregate(value ~ nullpi + Nsamp + ncontrols + variable,
+                  data = longdat_75, FUN = "mean")
+m_75$sd <- aggregate(value ~ nullpi + Nsamp + ncontrols + variable,
+                  data = longdat_75, FUN = "sd")$value
+
+m_w75 <- aggregate(value ~ nullpi + Nsamp + ncontrols + variable,
+                  data = longdat_whole75, FUN = "mean")
+m_w75$sd <- aggregate(value ~ nullpi + Nsamp + ncontrols + variable,
+                  data = longdat_whole75, FUN = "sd")$value
+```
+
+Now calculate p-values under 2 sample t-test.
+```{r}
+n <- 200
+
+spooled <- sqrt(m_na$sd ^2 / n + m_75$sd ^ 2 / n)
+sdf <- (m_na$sd ^ 2 / n + m_75$sd ^ 2 / n) /
+    ((m_na$sd ^ 2 / n) ^ 2 / (n - 1) + (m_75$sd ^ 2 / n) ^ 2 / (n - 1))
+tstat_na_75 <- (m_na$value - m_75$value) / spooled
+pvalues_na_75 <- 2 * (1 - pnorm(abs(tstat_na_75)))
+
+spooled <- sqrt(m_na$sd ^2 / n + m_w75$sd ^ 2 / n)
+sdf <- (m_na$sd ^ 2 / n + m_w75$sd ^ 2 / n) /
+    ((m_na$sd ^ 2 / n) ^ 2 / (n - 1) + (m_w75$sd ^ 2 / n) ^ 2 / (n - 1))
+tstat_na_w75 <- (m_na$value - m_w75$value) / spooled
+pvalues_na_w75 <- 2 * (1 - pnorm(abs(tstat_na_w75)))
+
+spooled <- sqrt(m_w75$sd ^2 / n + m_75$sd ^ 2 / n)
+sdf <- (m_w75$sd ^ 2 / n + m_75$sd ^ 2 / n) /
+    ((m_w75$sd ^ 2 / n) ^ 2 / (n - 1) + (m_75$sd ^ 2 / n) ^ 2 / (n - 1))
+tstat_w75_75 <- (m_w75$value - m_75$value) / spooled
+pvalues_w75_75 <- 2 * (1 - pnorm(abs(tstat_w75_75)))
+
+final_df <- m_na
+names(final_df)[5:6] <- c("mean_na", "sd_na")
+final_df <- dplyr::full_join(final_df, m_75)
+names(final_df)[7:8] <- c("mean_75", "sd_75")
+final_df <- dplyr::full_join(final_df, m_w75)
+names(final_df)[9:10] <- c("mean_w75", "sd_w75")
+final_df$tstat_na_75 <- tstat_na_75
+final_df$tstat_na_w75 <- tstat_na_w75
+final_df$tstat_w75_75 <- tstat_w75_75
+final_df$pvalues_na_75 <- pvalues_na_75
+final_df$pvalues_na_w75 <- pvalues_na_w75
+final_df$pvalues_w75_75 <- pvalues_w75_75
+```
+
+The Mean difference in mean AUC between the no-adjustment procedure
+and the adjustment procedure that uses the 75th percentile as a
+covariate is `r mean(final_df$mean_na - final_df$mean_75)`, which
+isn't that much. Though there is much heterogeneity in whether a
+procedure improves or gets worse when adding this extra covariate.
+
+
+```{r}
+ggplot(data = final_df, mapping = aes(x = Nsamp, y = tstat_na_75, color = variable)) +
+    geom_point() + geom_hline(yintercept = 0, lty = 2) +
+    ggtitle(label = "Mean AUC from No Adjustment Minus Mean AUC from 75th") +
+    ylab("t-statistic")
+```
+
+In the plot above, being negative means that adding the 75th percentile helpted. It helped OLS the most. It hurt CATE the most. It hurt RUVB in the small sample sizes and helped it in the larger sample sizes. It generally helped RUV3 and RUV4c.
+
+When using the entire library to calculate the 75th quantile and not
+just the subsample, and also prior to the Poisson thinning, we get
+that the mean difference in mean AUCs is `r mean(final_df$mean_na -
+final_df$mean_w75)`, so it actually made the AUC worse. Again, there
+is heterogeneity in how the methods responded.
+
+```{r}
+ggplot(data = final_df, mapping = aes(x = Nsamp, y = tstat_na_w75, color = variable)) +
+    geom_point() + geom_hline(yintercept = 0, lty = 2) +
+    ggtitle(label = "Mean AUC from No Adjustment Minus Mean AUC from Whole 75th") +
+    ylab("t-statistic")
+```
+
+In the plot above, a negative value means that adding the 75th
+quantile as a covariate helped the method. It generally helped CATE
+and RUV4c the most while hurting RUVB the most.
+
+```{r}
+ggplot(data = final_df, mapping = aes(x = Nsamp, y = tstat_w75_75, color = variable)) +
+    geom_point() + geom_hline(yintercept = 0, lty = 2) +
+    ggtitle(label = "Mean AUC from Whole 75th Minus Mean AUC from 75th") +
+    ylab("t-statistic")
+
+ggplot(data = final_df, mapping = aes(x = mean_na, y = mean_75, color = pvalues_na_75)) +
+    geom_point() + geom_abline(slope = 1, intercept = 0) +
+    ylab("AUC from 75th") + xlab("AUC from No Adjustment") +
+    scale_color_gradient(low = "red", high = "white")
+
+ggplot(data = final_df, mapping = aes(x = mean_na, y = mean_75, color = variable)) +
+    geom_point() + geom_abline(slope = 1, intercept = 0) +
+    ylab("AUC from 75th") + xlab("AUC from No Adjustment")
+```
+
+
+# MSE
+Remove everything
+```{r}
+rm(list = ls())
+```
+
+Read in MSE from simulation results.
+```{r}
+library(ggplot2)
+library(reshape2)
+library(dplyr)
+msemat_noadjust <- read.csv("../ruv3paper_sims_px_linked_v6p/mse_mat2.csv")
+msemat_75       <- read.csv("../ruv3paper_sims_px_linked_v6p_75th/mse_mat2.csv")
+msemat_whole75  <- read.csv("../ruv3paper_sims_px_linked_v6p_library/mse_mat2.csv")
+
+msemat_75 <- select(msemat_75, -ruv4v)
+msemat_whole75 <- select(msemat_whole75, -ruv4v)
+
+
+longdat_noadjust <- melt(msemat_noadjust, id.vars = colnames(msemat_noadjust)[1:5])
+longdat_75 <- melt(msemat_75, id.vars = colnames(msemat_75)[1:5])
+longdat_whole75 <- melt(msemat_whole75, id.vars = colnames(msemat_whole75)[1:5])
+```
+
+
+Calculate mean AUC and the AUC sd under every scenario.
+```{r}
+m_na <- aggregate(value ~ nullpi + Nsamp + ncontrols + variable,
+                  data = longdat_noadjust, FUN = "mean")
+m_na$sd <- aggregate(value ~ nullpi + Nsamp + ncontrols + variable,
+                  data = longdat_noadjust, FUN = "sd")$value
+
+m_75 <- aggregate(value ~ nullpi + Nsamp + ncontrols + variable,
+                  data = longdat_75, FUN = "mean")
+m_75$sd <- aggregate(value ~ nullpi + Nsamp + ncontrols + variable,
+                  data = longdat_75, FUN = "sd")$value
+
+m_w75 <- aggregate(value ~ nullpi + Nsamp + ncontrols + variable,
+                  data = longdat_whole75, FUN = "mean")
+m_w75$sd <- aggregate(value ~ nullpi + Nsamp + ncontrols + variable,
+                  data = longdat_whole75, FUN = "sd")$value
+```
+
+Now calculate p-values under 2 sample t-test.
+```{r}
+n <- 200
+
+spooled <- sqrt(m_na$sd ^2 / n + m_75$sd ^ 2 / n)
+sdf <- (m_na$sd ^ 2 / n + m_75$sd ^ 2 / n) /
+    ((m_na$sd ^ 2 / n) ^ 2 / (n - 1) + (m_75$sd ^ 2 / n) ^ 2 / (n - 1))
+tstat_na_75 <- (m_na$value - m_75$value) / spooled
+pvalues_na_75 <- 2 * (1 - pnorm(abs(tstat_na_75)))
+
+spooled <- sqrt(m_na$sd ^2 / n + m_w75$sd ^ 2 / n)
+sdf <- (m_na$sd ^ 2 / n + m_w75$sd ^ 2 / n) /
+    ((m_na$sd ^ 2 / n) ^ 2 / (n - 1) + (m_w75$sd ^ 2 / n) ^ 2 / (n - 1))
+tstat_na_w75 <- (m_na$value - m_w75$value) / spooled
+pvalues_na_w75 <- 2 * (1 - pnorm(abs(tstat_na_w75)))
+
+spooled <- sqrt(m_w75$sd ^2 / n + m_75$sd ^ 2 / n)
+sdf <- (m_w75$sd ^ 2 / n + m_75$sd ^ 2 / n) /
+    ((m_w75$sd ^ 2 / n) ^ 2 / (n - 1) + (m_75$sd ^ 2 / n) ^ 2 / (n - 1))
+tstat_w75_75 <- (m_w75$value - m_75$value) / spooled
+pvalues_w75_75 <- 2 * (1 - pnorm(abs(tstat_w75_75)))
+
+final_df <- m_na
+names(final_df)[5:6] <- c("mean_na", "sd_na")
+final_df <- dplyr::full_join(final_df, m_75)
+names(final_df)[7:8] <- c("mean_75", "sd_75")
+final_df <- dplyr::full_join(final_df, m_w75)
+names(final_df)[9:10] <- c("mean_w75", "sd_w75")
+final_df$tstat_na_75 <- tstat_na_75
+final_df$tstat_na_w75 <- tstat_na_w75
+final_df$tstat_w75_75 <- tstat_w75_75
+final_df$pvalues_na_75 <- pvalues_na_75
+final_df$pvalues_na_w75 <- pvalues_na_w75
+final_df$pvalues_w75_75 <- pvalues_w75_75
+```
+
+Including the 75th percentile as a covariate improved MSE performance
+overall, `r mean(final_df$mean_na - final_df$mean_75)`. But again,
+there is much heterogeneity.
+
+```{r}
+ggplot(data = final_df, mapping = aes(x = Nsamp, y = tstat_na_75, color = variable)) +
+    geom_point() + geom_hline(yintercept = 0, lty = 2) +
+    ggtitle(label = "Mean MSE from No Adjustment Minus Mean MSE from 75th") +
+    ylab("t-statistic")
+```
+
+In the above plot, a negative value means that adding the 75th
+percentile hurt a method (because the MSE would be larger). OLS was
+helped the most in adding the 75th percentile as a covarite, while
+CATE and RUV4c were hurt the most. Every other method was generally
+hurt for small sample sizes and helped for large sample sizes.
+
+MSE generally got worse when including the 75th percentile calculated
+from the whole library prior to Poisson thinning:
+```{r}
+ggplot(data = final_df, mapping = aes(x = Nsamp, y = tstat_na_w75, color = variable)) +
+    geom_point() + geom_hline(yintercept = 0, lty = 2) +
+    ggtitle(label = "Mean AUC from No Adjustment Minus Mean AUC from Whole 75th") +
+    ylab("t-statistic")
+```
