@@ -1,0 +1,1 @@
+This folder contains simulations under the Ghosh and Dunson (2009) like model. There is no hierarchy for the variances of the factors here, however.

@@ -1,12 +1,11 @@
 #' @param calibrate a logical for whether to use MAD calibrated t-stats.
 cate_nc <- function(Y, X, num_sv, control_genes, calibrate = FALSE, quant = 0.95) {
     calibrate <- as.logical(calibrate)
-    cate_nc <- cate::cate.fit(Y = Y,
-                          X.primary = X[, 2, drop = FALSE],
-                          X.nuis = X[, -2, drop = FALSE],
-                          r = num_sv, adj.method = "nc",
-                          nc = as.logical(control_genes),
-                          calibrate = calibrate)
+    cate_nc <- cate::cate.fit(Y = Y, X.primary = X[, 2, drop = FALSE],
+                              X.nuis = X[, -2, drop = FALSE],
+                              r = num_sv, adj.method = "nc",
+                              nc = as.logical(control_genes),
+                              calibrate = calibrate)
 
     betahat   <- c(cate_nc$beta)
     sebetahat <- c(sqrt(cate_nc$beta.cov.row * cate_nc$beta.cov.col) /
@@ -26,15 +25,13 @@ cate_nc <- function(Y, X, num_sv, control_genes, calibrate = FALSE, quant = 0.95
 #' @param calibrate a logical for whether to use MAD calibrated t-stats.
 cate_rr <- function(Y, X, num_sv, calibrate = FALSE) {
     calibrate <- as.logical(calibrate)
-    cate_rr <- cate::cate(~Treatment, Y = Y,
-                          X.data = data.frame(Treatment = X[, 2]),
-                          r = num_sv, fa.method = "ml", adj.method = "rr",
-                          calibrate = calibrate)
-    cate_rr_out           <- list()
-    betahat   <- c(cate_rr$beta)
-    sebetahat <- c(sqrt(cate_rr$beta.cov.row * cate_rr$beta.cov.col) / sqrt(nrow(X)))
-    pvalues   <- c(cate_rr$beta.p.value)
-    df        <- rep(Inf, length = ncol(Y))
+    cate_rr <- cate::cate.fit(Y = Y, X.primary = X[, 2, drop = FALSE],
+                              X.nuis = X[, -2, drop = FALSE],
+                              r = num_sv, adj.method = "rr", calibrate = calibrate)
+    betahat     <- c(cate_rr$beta)
+    sebetahat   <- c(sqrt(cate_rr$beta.cov.row * cate_rr$beta.cov.col) / sqrt(nrow(X)))
+    pvalues     <- c(cate_rr$beta.p.value)
+    df          <- Inf
     return(list(betahat = betahat, sebetahat = sebetahat, df = df,
                 pvalues = pvalues))
 }
@@ -185,6 +182,47 @@ succotash <- function(Y, X, num_sv) {
     return(list(betahat = betahat, lfdr = lfdr, pi0hat = pi0hat))
 }
 
+mouthwash_noscale <- function(Y, X, num_sv) {
+    vout <- vicar::mouthwash(Y = Y, X = X, k = num_sv, include_intercept = FALSE,
+                             limmashrink = TRUE, likelihood = "t", mixing_dist = "uniform",
+                             scale_var = FALSE)
+    betahat <- vout$result$PosteriorMean
+    lfdr    <- vout$result$lfdr
+    pi0hat  <- vout$pi0
+    return(list(betahat = betahat, lfdr = lfdr, pi0hat = pi0hat))
+}
+
+mouthwash_scale <- function(Y, X, num_sv) {
+    vout <- vicar::mouthwash(Y = Y, X = X, k = num_sv, include_intercept = FALSE,
+                             limmashrink = TRUE, likelihood = "t", mixing_dist = "uniform",
+                             scale_var = TRUE)
+    betahat <- vout$result$PosteriorMean
+    lfdr    <- vout$result$lfdr
+    pi0hat  <- vout$pi0
+    return(list(betahat = betahat, lfdr = lfdr, pi0hat = pi0hat))
+}
+
+mouthwash_normal_noscale <- function(Y, X, num_sv) {
+    vout <- vicar::mouthwash(Y = Y, X = X, k = num_sv, include_intercept = FALSE,
+                             limmashrink = TRUE, likelihood = "normal", mixing_dist = "normal",
+                             scale_var = FALSE)
+    betahat <- vout$result$PosteriorMean
+    lfdr    <- vout$result$lfdr
+    pi0hat  <- vout$pi0
+    return(list(betahat = betahat, lfdr = lfdr, pi0hat = pi0hat))
+}
+
+mouthwash_normal_scale <- function(Y, X, num_sv) {
+    vout <- vicar::mouthwash(Y = Y, X = X, k = num_sv, include_intercept = FALSE,
+                             limmashrink = TRUE, likelihood = "normal", mixing_dist = "normal",
+                             scale_var = TRUE)
+    betahat <- vout$result$PosteriorMean
+    lfdr    <- vout$result$lfdr
+    pi0hat  <- vout$pi0
+    return(list(betahat = betahat, lfdr = lfdr, pi0hat = pi0hat))
+}
+
+
 sva <- function(Y, X, num_sv) {
     trash     <- capture.output(sva_out <- sva::sva(dat = t(Y), mod = X, n.sv = num_sv))
     X.sv      <- cbind(X, sva_out$sv)
@@ -200,7 +238,8 @@ sva <- function(Y, X, num_sv) {
 
 vruv4 <- function(Y, X, num_sv, control_genes, adjust_bias = FALSE, quant = 0.95) {
     vout <- vicar::vruv4(Y = Y, X = X, k = num_sv, ctl = as.logical(control_genes),
-                         limmashrink = TRUE, cov_of_interest = 2, adjust_bias = adjust_bias)
+                         limmashrink = TRUE, cov_of_interest = 2, adjust_bias = adjust_bias,
+                         likelihood = "normal")
     betahat   <- c(vout$betahat)
     sebetahat <- c(vout$sebetahat)
     pvalues   <- c(vout$pvalues)

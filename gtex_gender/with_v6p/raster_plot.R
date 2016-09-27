@@ -31,7 +31,7 @@ tissue_vec <- c("adiposetissue", "bladder", "bloodvessel", "breast",
                 "skin", "spleen", "adrenalgland", "blood", "brain",
                 "esophagus", "heart", "liver", "muscle", "pituitary",
                 "salivarygland", "smallintestine", "stomach", "thyroid")
-method_names <- c("OLS", "RUV2", "RUV2c", "RUV3", "RUV4", "RUV4c", "CATE", "RUVB")
+method_names <- c("OLS", "RUV2", "RUV3", "RUV4", "RUV4c", "CATE", "CATEc", "RUVB")
 num_sv_seq <- readRDS("./output/ruvbout/num_sv.Rds")
 num_look_seq <- c(100, 300, 500)
 
@@ -50,12 +50,13 @@ for(tissue_index in 1:length(tissue_vec)) {
     dat$ctl[onsex] <- FALSE
     nseq[tissue_index] <- ncol(dat$Y)
 
+    cat(tissue_index, "\n")
+
 
     ruvbout  <- readRDS(paste0("./output/ruvbout/ruvbout_", current_tissue, ".Rds"))
     olsout   <- ols(Y = t(dat$Y), X = dat$X)
     ruv2out  <- ruv::RUV2(Y = t(dat$Y), X = dat$X[, 2, drop = FALSE], ctl = dat$ctl,
                           k = num_sv, Z = dat$X[, -2, drop = FALSE])
-    ruv2cout <- ruv::variance_adjust(ruv2out)
     ruv3out  <- vicar::ruv3(Y = t(dat$Y), X = dat$X, ctl = dat$ctl, cov_of_interest = ncol(dat$X),
                             k = num_sv, include_intercept = FALSE)
     ruv4out  <- ruv::RUV4(Y = t(dat$Y), X = dat$X[, 2, drop = FALSE], ctl = dat$ctl,
@@ -66,12 +67,20 @@ for(tissue_index in 1:length(tissue_vec)) {
                                Y = t(dat$Y), r = num_sv,
                                adj.method = "nc",
                                nc = dat$ctl, calibrate = FALSE)
+    catecout <- vicar::vruv4(Y = t(dat$Y), X = dat$X, ctl = dat$ctl,
+                             k = num_sv, cov_of_interest = 2,
+                             likelihood = "normal",
+                             include_intercept = FALSE)
 
-    pdat <- cbind(OLS = c(olsout$pvalues)[!dat$ctl], RUV2 = c(ruv2out$p)[!dat$ctl],
-                  RUV2c = c(ruv2cout$p.rsvar.ebayes)[!dat$ctl],
+
+    pdat <- cbind(OLS = c(olsout$pvalues)[!dat$ctl],
+                  RUV2 = c(ruv2out$p)[!dat$ctl],
                   RUV3 = c(ruv3out$pvalues_unadjusted)[!dat$ctl],
-                  RUV4 = c(ruv4out$p)[!dat$ctl], RUV4c = ruv4cout$p.rsvar.ebayes[!dat$ctl],
-                  CATE = c(cateout$beta.p.value)[!dat$ctl], RUVB = c(ruvbout$lfsr2))
+                  RUV4 = c(ruv4out$p)[!dat$ctl],
+                  RUV4c = ruv4cout$p.rsvar.ebayes[!dat$ctl],
+                  CATE = c(cateout$beta.p.value)[!dat$ctl],
+                  CATEc = c(catecout$pvalues)[!dat$ctl],
+                  RUVB = c(ruvbout$lfsr2))
 
     ## auc_out <- apply(pdat, 2, proc_wrapper, response = onsex[!dat$ctl])
     for(num_look_index in 1:length(num_look_seq)) {

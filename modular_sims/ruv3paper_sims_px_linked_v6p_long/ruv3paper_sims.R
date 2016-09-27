@@ -34,8 +34,6 @@ one_rep <- function(new_params, current_params) {
         method_list$ols        <- ols(Y = Y, X = X)
         method_list$ruv2       <- ruv2(Y = Y, X = X, num_sv = num_sv,
                                        control_genes = control_genes)
-        method_list$ruv2_rsvar <- ruv2(Y = Y, X = X, num_sv = num_sv,
-                                       control_genes = control_genes)
         method_list$ruv3       <- ruv3(Y = Y, X = X, num_sv = num_sv,
                                        control_genes = control_genes,
                                        multiplier = FALSE)
@@ -51,8 +49,10 @@ one_rep <- function(new_params, current_params) {
         method_list$catenc     <- cate_nc(Y = Y, X = X, num_sv = num_sv,
                                           control_genes = control_genes,
                                           calibrate = TRUE)
-        method_list$ruvb       <- ruvb_bfl(Y = Y, X = X, num_sv = num_sv,
-                                           control_genes = control_genes)
+        method_list$ruv4v      <- vruv4(Y = Y, X = X, num_sv = num_sv,
+                                        control_genes = control_genes)
+        method_list$ruvb       <- ruvb_bfa_gs_linked(Y = Y, X = X, num_sv = num_sv,
+                                                     control_genes = control_genes)
 
 
 
@@ -111,7 +111,7 @@ one_rep <- function(new_params, current_params) {
     return(return_vec)
 }
 
-itermax <- 200
+itermax <- 500
 seed_start <- 2222
 
 ## these change
@@ -138,16 +138,16 @@ for (list_index in 1:nrow(par_vals)) {
 args_val              <- list()
 args_val$log2foldsd   <- 0.8
 args_val$tissue       <- "muscle"
-args_val$path         <- "../../../data/gtex_tissue_gene_reads/"
+args_val$path         <- "../../../data/gtex_tissue_gene_reads_v6p/"
 args_val$Ngene        <- 1000
 args_val$log2foldmean <- 0
 args_val$skip_gene    <- 0
 
-## one_rep(par_list[[21]], args_val)
+## one_rep(par_list[[3]], args_val)
 
 ## ## If on your own computer, use this
 library(parallel)
-cl <- makeCluster(detectCores() - 1)
+cl <- makeCluster(detectCores() - 2)
 sout <- t(snow::parSapply(cl = cl, par_list, FUN = one_rep, current_params = args_val))
 stopCluster(cl)
 
@@ -166,3 +166,25 @@ cov_mat <- cbind(par_vals, sout[, 17:24])
 write.csv(mse_mat, file = "mse_mat2.csv", row.names = FALSE)
 write.csv(auc_mat, file = "auc_mat2.csv", row.names = FALSE)
 write.csv(cov_mat, file = "cov_mat2.csv", row.names = FALSE)
+
+
+
+
+
+## from par_list[[1070]], chosen by a random seed
+library(coda)
+bout <- vicar::ruvb(Y = Y, X = X, k = num_sv, ctl = control_genes,
+                    return_mcmc = TRUE)
+
+mcmc_b <- mcmc(t(bout$betahat_post[1, , ,drop = TRUE]))
+gout <- geweke.diag(mcmc_b)
+qqnorm(gout$z)
+abline(0, 1)
+
+traceplot(mcmc_b)
+
+library(ggplot2)
+eout <- effectiveSize(mcmc_b)
+qplot(eout, bins = 20, fill = I("white"), color = I("black")) + theme_bw()
+
+out$betahat_post

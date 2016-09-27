@@ -1,0 +1,8 @@
+This folder contains simulations under the Ghosh and Dunson (2009) like model, except with linked variances and factor variances.
+
+I use the V6P version of GTEX to do this
+
+I adjust for library size using the pre-processed pre-poisson thinned
+count matrix. I use the entire count matrix, not just the count matrix
+of the top 1000. Here, I include the 75th percentile of the log-counts
+as a covariate.

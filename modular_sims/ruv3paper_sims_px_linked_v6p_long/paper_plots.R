@@ -9,11 +9,13 @@ mse_mat <- read.csv("mse_mat2.csv")
 auc_mat <- read.csv("auc_mat2.csv")
 cov_mat <- read.csv("cov_mat2.csv")
 
-colnames(cov_mat)[6:ncol(cov_mat)] <- c("OLS", "RUV2", "RUV2c", "RUV3",
-                                        "RUV4", "RUV4c", "CATE", "RUVB")
+colnames(cov_mat)[6:ncol(cov_mat)] <- c("OLS", "RUV2", "RUV3", "RUV4",
+                                        "RUV4c", "CATE", "CATEc",
+                                        "RUVB")
 
-colnames(auc_mat)[6:ncol(auc_mat)] <- c("OLS", "RUV2", "RUV2c", "RUV3",
-                                        "RUV4", "RUV4c", "CATE", "RUVB")
+colnames(auc_mat)[6:ncol(auc_mat)] <- c("OLS", "RUV2", "RUV3", "RUV4",
+                                        "RUV4c", "CATE", "CATEc",
+                                        "RUVB")
 ## Coverage Plot -------------------------------------------------
 
 longdat <- melt(data = cov_mat, id.vars = 1:5)
@@ -29,6 +31,21 @@ p <- ggplot(data = longdat, mapping = aes(y = value, x = variable)) +
 print(p)
 dev.off()
 
+
+## Coverage plot just nullpi = 0.5 ---------------------------------------
+longdat <- melt(data = cov_mat, id.vars = 1:5)
+longdat$Nsamp <- longdat$Nsamp * 2
+longdat <- filter(longdat, nullpi == 0.5)
+pdf(file = "coverage_5.pdf", height = 3.2, width = 6.5, family = "Times")
+p <- ggplot(data = longdat, mapping = aes(y = value, x = variable)) +
+    geom_boxplot(outlier.size = 0.2, size = 0.2) +
+    facet_grid(ncontrols ~ Nsamp) +
+    geom_hline(yintercept = 0.95, lty = 2) +
+    xlab("Method") + ylab("Coverage")  +
+    theme_bw() + theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    theme(strip.background = element_rect(fill="white"))
+print(p)
+dev.off()
 
 
 ## AUC plot ------------------------------------------------------
@@ -82,7 +99,27 @@ p <- ggplot(data = longdat, mapping = aes(y = value, x = variable)) +
 print(p)
 dev.off()
 
-## Other Plots ------------------------------------------------------------------
+## Diff AUC Plot at nullpi = 0.5 ----------------------------------------------
+diff_mat <- cbind(auc_mat[, 1:5], auc_mat[, -c(1:5)] - auc_mat$RUVB)
+diff_mat <- select(diff_mat, -RUVB)
+
+longdat <- filter(melt(data = diff_mat, id.vars = 1:5), nullpi != 1)
+longdat$Nsamp <- longdat$Nsamp * 2
+longdat <- filter(longdat, nullpi == 0.5)
+dummy_dat$Nsamp <- dummy_dat$Nsamp * 2
+pdf(file = "diff_5.pdf", height = 3.2, width = 6.5, family = "Times")
+p <- ggplot(data = longdat, mapping = aes(y = value, x = variable)) +
+    geom_boxplot(outlier.size = 0.2, size = 0.2) +
+    facet_grid(ncontrols ~ Nsamp) +
+    geom_hline(yintercept = 0, lty = 2) +
+    xlab("Method") + ylab("Difference in AUC") +
+    ylim(-0.2, 0.1) +
+    theme_bw() + theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    theme(strip.background = element_rect(fill="white"))
+print(p)
+dev.off()
+
+## Other Plots ----------------------------------------------------------------
 
 
 

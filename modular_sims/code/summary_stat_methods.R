@@ -1,11 +1,14 @@
-fit_ash <- function(betahat, sebetahat, df, model = "EE") {
-    outputlevel <- 2
-    suppressWarnings(ashout <- ashr::ash(betahat = betahat, sebetahat = sebetahat, df = df, model = model, outputlevel = outputlevel))
-    if (outputlevel > 2) {
-        betahat <- c(ashout$PosteriorMean)
-    }
-    lfdr    <- c(ashout$lfdr)
+fit_ash <- function(betahat, sebetahat, df) {
+    outputlevel <- 3
+    ashout <- ashr::ash(betahat = betahat, sebetahat = sebetahat,
+                        df = df, outputlevel = outputlevel)
+
+    lfdr    <- c(ashout$result$lfdr)
     pi0hat  <- c(ashr::get_pi0(ashout))
+    if (outputlevel > 2) {
+        betahat <- c(ashout$result$PosteriorMean)
+        return(list(betahat = betahat, lfdr = lfdr, pi0hat = pi0hat))
+    }
     return(list(lfdr = lfdr, pi0hat = pi0hat))
 }
 

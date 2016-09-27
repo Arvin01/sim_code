@@ -4,6 +4,7 @@
 *~
 *.html
 *.Rd
+*.Rds
 *.Rhistory
 *.RData
 *.rdb
@@ -16,3 +17,6 @@
 /dsc_trial/code/.sos/
 *.log
 *.html
+/reproduce_ruv3/
+*.gz
+*.gtf

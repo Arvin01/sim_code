@@ -1,0 +1,5 @@
+This folder contains simulations under the Ghosh and Dunson (2009) like model, except with linked variances and factor variances.
+
+I use the V6P version of GTEX to do this
+
+Here, I use the DESeq procedure for normalization.
