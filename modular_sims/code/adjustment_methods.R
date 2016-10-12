@@ -36,6 +36,35 @@ cate_rr <- function(Y, X, num_sv, calibrate = FALSE) {
                 pvalues = pvalues))
 }
 
+leapp <- function(Y, X, num_sv) {
+    ## LEAPP Sparse-------------------------------------------------------
+    ## Sometimes stalls when sparse = TRUE
+    trash2 <- tryCatch({
+        trash <- R.utils::evalWithTimeout({
+            leapp_sparse <- leapp::leapp(dat = t(Y), pred.prim = X[, 2, drop = FALSE],
+                                         pred.covar = X[, -2, drop = FALSE],
+                                         num.fac = num_sv)
+            leapp_sparse_out         <- list()
+            leapp_sparse_out$betahat <- leapp_sparse$gamma
+            leapp_sparse_out$pvalues  <- leapp_sparse$p
+            TRUE
+        },
+        timeout = 120,
+        onTimeout = "silent")
+    },
+    error = function(e){NULL})
+    if(is.null(trash2)) {
+        leapp_sparse_out <- list()
+        leapp_sparse_out$betahat <- rep(NA, length = ncol(Y))
+        leapp_sparse_out$pvalues <- rep(NA, length = ncol(Y))
+    } else if (is.null(trash)) {
+        leapp_sparse_out <- list()
+        leapp_sparse_out$betahat <- rep(NA, length = ncol(Y))
+        leapp_sparse_out$pvalues <- rep(NA, length = ncol(Y))
+    }
+    return(leapp_sparse_out)
+}
+
 ols <- function(Y, X, quant = 0.95) {
     limma_out <- limma::lmFit(object = t(Y), design = X)
     betahat   <- limma_out$coefficients[, 2]
@@ -182,6 +211,29 @@ succotash <- function(Y, X, num_sv) {
     return(list(betahat = betahat, lfdr = lfdr, pi0hat = pi0hat))
 }
 
+mouthwash <- function(Y, X, num_sv, likelihood = c("normal", "t"), scale_var = TRUE) {
+    likelihood <- match.arg(likelihood)
+    if (likelihood == "normal") {
+        mout <- vicar::mouthwash(Y = Y, X = X, k = num_sv,
+                                 cov_of_interest = 2,
+                                 include_intercept = FALSE,
+                                 likelihood = "normal",
+                                 mixing_dist = "normal",
+                                 scale_var = scale_var)
+    } else if (likelihood == "t") {
+        mout <- vicar::mouthwash(Y = Y, X = X, k = num_sv,
+                                 cov_of_interest = 2,
+                                 include_intercept = FALSE,
+                                 likelihood = "t",
+                                 mixing_dist = "sym_uniform",
+                                 scale_var = scale_var)
+    }
+    betahat <- mout$result$PosteriorMean
+    lfdr    <- mout$result$lfdr
+    pi0hat  <- mout$pi0
+    return(list(betahat = betahat, lfdr = lfdr, pi0hat = pi0hat))
+}
+
 mouthwash_noscale <- function(Y, X, num_sv) {
     vout <- vicar::mouthwash(Y = Y, X = X, k = num_sv, include_intercept = FALSE,
                              limmashrink = TRUE, likelihood = "t", mixing_dist = "uniform",
@@ -229,17 +281,19 @@ sva <- function(Y, X, num_sv) {
     limma_out <- limma::lmFit(object = t(Y), design = X.sv)
     betahat   <- limma_out$coefficients[, 2]
     sebetahat <- limma_out$stdev.unscaled[, 2] * limma_out$sigma
-    df        <- limma_out$df.residual
+    df        <- limma_out$df.residual[1]
     tstats    <- betahat / sebetahat
     pvalues   <- 2 * pt(-abs(tstats), df = df)
     return(list(betahat = betahat, sebetahat = sebetahat, df = df,
                 pvalues = pvalues))
 }
 
-vruv4 <- function(Y, X, num_sv, control_genes, adjust_bias = FALSE, quant = 0.95) {
+vruv4 <- function(Y, X, num_sv, control_genes, adjust_bias = FALSE, quant = 0.95,
+                  likelihood = c("normal", "t")) {
+    likelihood <- match.arg(likelihood)
     vout <- vicar::vruv4(Y = Y, X = X, k = num_sv, ctl = as.logical(control_genes),
                          limmashrink = TRUE, cov_of_interest = 2, adjust_bias = adjust_bias,
-                         likelihood = "normal")
+                         likelihood = likelihood)
     betahat   <- c(vout$betahat)
     sebetahat <- c(vout$sebetahat)
     pvalues   <- c(vout$pvalues)
